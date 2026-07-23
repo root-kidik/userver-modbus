@@ -16,9 +16,6 @@ enum class ExceptionCode : std::uint8_t {
     kGatewayTargetFailed = 0x0B,
 };
 
-inline constexpr std::uint8_t kErrorFlag = 0x80;
-inline constexpr std::uint8_t kFunctionCodeMask = 0x7F;
-
 [[nodiscard]] constexpr bool IsValidExceptionCode(std::uint8_t raw_code) noexcept {
     switch (static_cast<ExceptionCode>(raw_code)) {
         case ExceptionCode::kIllegalFunction:
@@ -38,18 +35,6 @@ inline constexpr std::uint8_t kFunctionCodeMask = 0x7F;
 
 [[nodiscard]] constexpr bool IsValidExceptionCode(ExceptionCode code) noexcept {
     return IsValidExceptionCode(static_cast<std::uint8_t>(code));
-}
-
-[[nodiscard]] constexpr std::uint8_t ToErrorFunctionCode(std::uint8_t function_code) noexcept {
-    return function_code | kErrorFlag;
-}
-
-[[nodiscard]] constexpr bool IsErrorFunctionCode(std::uint8_t function_code) noexcept {
-    return (function_code & kErrorFlag) != 0;
-}
-
-[[nodiscard]] constexpr std::uint8_t ToNormalFunctionCode(std::uint8_t error_function_code) noexcept {
-    return error_function_code & kFunctionCodeMask;
 }
 
 }  // namespace modbus
