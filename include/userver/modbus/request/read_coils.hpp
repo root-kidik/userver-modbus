@@ -16,7 +16,7 @@ public:
   static constexpr std::uint16_t kMaxQuantity{0x07'D0};
 
   static utils::expected<ReadCoils, Error> Create(std::uint16_t address,
-                                                  std::uint16_t quantity) {
+                                                  std::uint16_t quantity) noexcept {
     if (quantity < kMinQuantity || quantity > kMaxQuantity) {
       return utils::unexpected{Error::kInvalidQuantity};
     }
@@ -30,7 +30,7 @@ public:
 
   template <typename InputIt>
   static utils::expected<ReadCoils, Error> Deserialize(InputIt first,
-                                                       InputIt last) {
+                                                       InputIt last) noexcept {
     const auto func_code_res = ReadBe<std::uint8_t>(first, last);
     if (!func_code_res) {
       return utils::unexpected{func_code_res.error()};
