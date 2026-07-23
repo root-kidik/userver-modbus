@@ -4,6 +4,6 @@
 
 namespace modbus::request {
 
-using ReadCoils = impl::ReadMultiple<FunctionCode::kReadCoils, 2000>;
+using ReadHoldingRegisters = impl::ReadMultiple<FunctionCode::kReadHoldingRegisters, 125>;
 
 }  // namespace modbus::request
