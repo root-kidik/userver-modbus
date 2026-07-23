@@ -26,6 +26,3 @@ PenaltyBreakBeforeFirstCallParameter: 1
 PenaltyReturnTypeOnItsOwnLine: 10000000
 InsertBraces: true
 IndentWrappedFunctionNames: false
-
-# Use unpatched ContinuationIndenter, remove this line if you use vanilla clang-format code
-VanillaContinuationIndenter: true

@@ -68,3 +68,7 @@ gen-debian-directory:
 cmake-format:
 	find $$(ls */ -d | grep -v ^build) -name '*.cmake' -o -name 'CMakeLists.txt' | \
 		xargs cmake-format -i
+
+.PHONY: format
+format:
+	find src include -name '*pp' -type f | xargs clang-format -i
