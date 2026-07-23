@@ -19,6 +19,10 @@ public:
         FunctionCode function_code,
         ExceptionCode exception_code
     ) noexcept {
+        if (!IsValidExceptionCode(exception_code)) {
+            return userver::utils::unexpected{ParseError::kInvalidExceptionCode};
+        }
+
         const auto raw_fc = static_cast<std::uint8_t>(function_code);
 
         const auto error_fc =
@@ -41,6 +45,10 @@ public:
         const auto raw_ec = ReadBe<std::uint8_t>(first, last);
         if (!raw_ec) {
             return userver::utils::unexpected{raw_ec.error()};
+        }
+
+        if (!IsValidExceptionCode(*raw_ec)) {
+            return userver::utils::unexpected{ParseError::kInvalidExceptionCode};
         }
 
         if (first != last) {

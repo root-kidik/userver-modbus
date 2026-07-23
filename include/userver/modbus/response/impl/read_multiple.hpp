@@ -45,8 +45,8 @@ public:
     static userver::utils::expected<ReadMultiple, ParseError> Deserialize(
         InputIt& first,
         InputIt last,
-        std::uint16_t expected_quantity = 0
-    ) noexcept {
+        std::uint16_t expected_quantity
+    ) {
         const auto function_code = ReadBe<std::uint8_t>(first, last);
         if (!function_code) {
             return userver::utils::unexpected{function_code.error()};

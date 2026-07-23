@@ -6,6 +6,7 @@ enum class ParseError {
     kBufferTooShort,
     kExtraDataAtEnd,
     kInvalidFunctionCode,
+    kInvalidExceptionCode,
     kInvalidQuantity,
     kAddressOverflow,
     kInvalidValue,

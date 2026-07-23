@@ -69,7 +69,7 @@ userver::utils::expected<T, ParseError> ReadBe(InputIt& first, InputIt last) noe
 
 inline constexpr std::uint32_t kMaxAddressSpace = 0x10000;
 
-[[nodiscard]] inline bool WouldAddressOverflow(std::uint16_t address, std::uint16_t quantity) noexcept {
+[[nodiscard]] constexpr bool WouldAddressOverflow(std::uint16_t address, std::uint16_t quantity) noexcept {
     return (static_cast<std::uint32_t>(address) + quantity) > kMaxAddressSpace;
 }
 
