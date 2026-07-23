@@ -2,8 +2,6 @@
 
 #include <cstdint>
 
-USERVER_NAMESPACE_BEGIN
-
 namespace modbus {
 
 enum class FunctionCode : std::uint8_t {
@@ -18,5 +16,3 @@ enum class FunctionCode : std::uint8_t {
 };
 
 } // namespace modbus
-
-USERVER_NAMESPACE_END
