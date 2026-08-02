@@ -44,7 +44,7 @@ UTEST(RtuFrameTest, CreateSuccess) {
 }
 
 UTEST(RtuFrameTest, CreateFailsWhenPduTooLarge) {
-    auto huge_pdu = std::vector<std::byte>(modbus::RtuFrame::kMaxPduSize + 1, std::byte{0});
+    auto huge_pdu = std::vector<std::byte>(modbus::kMaxPduSize + 1, std::byte{0});
     const auto frame_result = modbus::RtuFrame::Create(0x01, std::move(huge_pdu));
 
     ASSERT_FALSE(frame_result.has_value());
@@ -88,7 +88,7 @@ UTEST(RtuFrameTest, DeserializeFailsBufferTooShort) {
 
 UTEST(RtuFrameTest, DeserializeFailsPduTooLarge) {
     const auto buffer = std::vector<
-        std::byte>(modbus::RtuFrame::kMinFrameSize + modbus::RtuFrame::kMaxPduSize + 1, std::byte{0});
+        std::byte>(modbus::RtuFrame::kMinFrameSize + modbus::kMaxPduSize + 1, std::byte{0});
 
     auto it = buffer.cbegin();
     const auto frame_result = modbus::RtuFrame::Deserialize(it, buffer.cend());

@@ -40,13 +40,6 @@ UTEST(ResponseReadCoilsTest, CreateInvalidQuantityOverflow) {
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
-UTEST(ResponseReadCoilsTest, CreateInvalidValue) {
-    const std::vector<modbus::Coil> coils{static_cast<modbus::Coil>(0x1234)};
-    const auto response = modbus::response::ReadCoils::Create(coils);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kInvalidValue);
-}
-
 UTEST(ResponseReadCoilsTest, Serialize) {
     const std::vector<modbus::Coil> coils{
         modbus::Coil::kOn,

@@ -82,9 +82,10 @@ public:
     [[nodiscard]] T GetValue() const noexcept { return value_; }
 
 private:
-    constexpr WriteSingle(std::uint16_t address, T value) noexcept : address_{address}, value_{value} {}
+    WriteSingle(std::uint16_t address, T value) noexcept : address_{address}, value_{value} {}
 
     std::uint16_t address_;
+
     T value_;
 };
 

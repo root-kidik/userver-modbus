@@ -1,10 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <type_traits>
-#include <utility>
-#include <vector>
 
 #include <modbus/coil.hpp>
 #include <modbus/function_code.hpp>
@@ -22,7 +23,8 @@ public:
 
     static constexpr FunctionCode kFunctionCode{Code};
 
-    static userver::utils::expected<WriteMultiple, ParseError> Create(std::uint16_t address, std::vector<T> values) {
+    static userver::utils::expected<WriteMultiple, ParseError> Create(std::uint16_t address, std::span<const T> values)
+        noexcept {
         if (values.size() < kMinQuantity || values.size() > kMaxQuantity) {
             return userver::utils::unexpected{ParseError::kInvalidQuantity};
         }
@@ -41,7 +43,7 @@ public:
             }
         }
 
-        return WriteMultiple{address, std::move(values)};
+        return WriteMultiple{address, values};
     }
 
     template <typename InputIt>
@@ -83,8 +85,7 @@ public:
             return userver::utils::unexpected{ParseError::kInvalidQuantity};
         }
 
-        std::vector<T> values;
-        values.reserve(*quantity);
+        std::array<T, MaxQty> parsed_values{};
 
         if constexpr (std::is_same_v<T, Coil>) {
             std::uint8_t current_byte = 0;
@@ -99,7 +100,7 @@ public:
                 }
 
                 const auto is_on = ((current_byte >> bit_idx) & 0x01) != 0;
-                values.push_back(is_on ? Coil::kOn : Coil::kOff);
+                parsed_values[i] = is_on ? Coil::kOn : Coil::kOff;
             }
         } else {
             for (std::size_t i = 0; i < *quantity; ++i) {
@@ -107,7 +108,7 @@ public:
                 if (!val) {
                     return userver::utils::unexpected{val.error()};
                 }
-                values.push_back(*val);
+                parsed_values[i] = *val;
             }
         }
 
@@ -115,7 +116,7 @@ public:
             return userver::utils::unexpected{ParseError::kExtraDataAtEnd};
         }
 
-        return WriteMultiple{*address, std::move(values)};
+        return Create(*address, std::span<const T>{parsed_values.data(), *quantity});
     }
 
     template <typename OutputIt>
@@ -132,15 +133,15 @@ public:
                 std::uint8_t byte_val = 0;
                 for (std::size_t bit_idx = 0; bit_idx < 8; ++bit_idx) {
                     const auto coil_idx = byte_idx * 8 + bit_idx;
-                    if (coil_idx < values_.size() && values_[coil_idx] == Coil::kOn) {
+                    if (coil_idx < quantity_ && values_[coil_idx] == Coil::kOn) {
                         byte_val |= static_cast<std::uint8_t>(1U << bit_idx);
                     }
                 }
                 out = WriteBe(out, byte_val);
             }
         } else {
-            for (const auto val : values_) {
-                out = WriteBe(out, val);
+            for (std::size_t i = 0; i < quantity_; ++i) {
+                out = WriteBe(out, values_[i]);
             }
         }
 
@@ -149,29 +150,33 @@ public:
 
     [[nodiscard]] std::uint16_t GetAddress() const noexcept { return address_; }
 
-    [[nodiscard]] std::uint16_t GetQuantity() const noexcept { return static_cast<std::uint16_t>(values_.size()); }
+    [[nodiscard]] std::uint16_t GetQuantity() const noexcept { return quantity_; }
 
-    [[nodiscard]] std::uint8_t GetByteCount() const noexcept { return CalcByteCount(GetQuantity()); }
+    [[nodiscard]] std::uint8_t GetByteCount() const noexcept { return CalcByteCount(quantity_); }
 
-    [[nodiscard]] std::span<const T> GetValues() const noexcept { return values_; }
+    [[nodiscard]] std::span<const T> GetValues() const noexcept {
+        return std::span<const T>{values_.data(), quantity_};
+    }
 
     [[nodiscard]] std::span<const T> GetCoils() const noexcept
     requires std::is_same_v<T, Coil>
     {
-        return values_;
+        return GetValues();
     }
 
     [[nodiscard]] std::span<const T> GetRegisters() const noexcept
     requires std::is_same_v<T, std::uint16_t>
     {
-        return values_;
+        return GetValues();
     }
 
 private:
-    WriteMultiple(std::uint16_t address, std::vector<T> values) noexcept
-        : address_{address}, values_{std::move(values)} {}
+    WriteMultiple(std::uint16_t address, std::span<const T> values) noexcept
+        : address_{address}, quantity_{static_cast<std::uint16_t>(values.size())} {
+        std::copy(values.begin(), values.end(), values_.begin());
+    }
 
-    static constexpr std::uint8_t CalcByteCount(std::size_t quantity) noexcept {
+    static std::uint8_t CalcByteCount(std::size_t quantity) noexcept {
         if constexpr (std::is_same_v<T, Coil>) {
             return static_cast<std::uint8_t>((quantity + 7) / 8);
         } else {
@@ -180,7 +185,9 @@ private:
     }
 
     std::uint16_t address_;
-    std::vector<T> values_;
+    std::uint16_t quantity_;
+
+    std::array<T, MaxQty> values_;
 };
 
 }  // namespace modbus::request::impl

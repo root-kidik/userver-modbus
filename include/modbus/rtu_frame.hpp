@@ -1,15 +1,15 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <span>
-#include <utility>
-#include <vector>
 
 #include <userver/utils/expected.hpp>
 
+#include <modbus/constants.hpp>
 #include <modbus/crc.hpp>
 
 namespace modbus {
@@ -18,18 +18,18 @@ enum class RtuError : std::uint8_t { kBufferTooShort, kInvalidCrc, kPduTooLarge 
 
 class RtuFrame {
 public:
-    static constexpr std::size_t kMaxPduSize = 253;
     static constexpr std::size_t kMinFrameSize = 3;
+    static constexpr std::size_t kMaxFrameSize = 256;
 
     [[nodiscard]] static userver::utils::expected<RtuFrame, RtuError> Create(
         std::uint8_t slave_id,
-        std::vector<std::byte> pdu
+        std::span<const std::byte> pdu
     ) noexcept {
         if (pdu.size() > kMaxPduSize) {
             return userver::utils::unexpected{RtuError::kPduTooLarge};
         }
 
-        return RtuFrame{slave_id, std::move(pdu)};
+        return RtuFrame{slave_id, pdu};
     }
 
     template <typename InputIt>
@@ -53,10 +53,9 @@ public:
 
         const auto slave_id = static_cast<std::uint8_t>(*first++);
 
-        std::vector<std::byte> pdu;
-        pdu.reserve(pdu_size);
-        for (; first != crc_it; ++first) {
-            pdu.push_back(static_cast<std::byte>(*first));
+        std::array<std::byte, kMaxPduSize> pdu_buf{};
+        for (std::size_t i = 0; i < static_cast<std::size_t>(pdu_size); ++i) {
+            pdu_buf[i] = static_cast<std::byte>(*first++);
         }
 
         const auto crc_lo = static_cast<std::uint8_t>(*first++);
@@ -68,21 +67,20 @@ public:
             return userver::utils::unexpected{RtuError::kInvalidCrc};
         }
 
-        return Create(slave_id, std::move(pdu));
+        return Create(slave_id, std::span<const std::byte>{pdu_buf.data(), static_cast<std::size_t>(pdu_size)});
     }
 
     template <typename OutputIt>
     [[nodiscard]] OutputIt Serialize(OutputIt out) const {
         *out++ = static_cast<std::byte>(slave_id_);
 
-        out = std::copy(pdu_.begin(), pdu_.end(), out);
+        out = std::copy_n(pdu_.begin(), pdu_size_, out);
 
         CrcType crc;
-
         crc.process_byte(slave_id_);
 
-        if (!pdu_.empty()) {
-            crc.process_bytes(pdu_.data(), pdu_.size());
+        if (pdu_size_ > 0) {
+            crc.process_bytes(pdu_.data(), pdu_size_);
         }
 
         const auto checksum = crc.checksum();
@@ -93,16 +91,22 @@ public:
         return out;
     }
 
-    [[nodiscard]] constexpr std::uint8_t GetSlaveId() const noexcept { return slave_id_; }
+    [[nodiscard]] std::uint8_t GetSlaveId() const noexcept { return slave_id_; }
 
-    [[nodiscard]] std::span<const std::byte> GetPdu() const noexcept { return pdu_; }
+    [[nodiscard]] std::span<const std::byte> GetPdu() const noexcept {
+        return std::span<const std::byte>{pdu_.data(), pdu_size_};
+    }
 
 private:
-    RtuFrame(std::uint8_t slave_id, std::vector<std::byte> pdu) noexcept : slave_id_{slave_id}, pdu_{std::move(pdu)} {}
+    RtuFrame(std::uint8_t slave_id, std::span<const std::byte> pdu) noexcept
+        : slave_id_{slave_id}, pdu_size_{static_cast<std::uint8_t>(pdu.size())} {
+        std::copy(pdu.begin(), pdu.end(), pdu_.begin());
+    }
 
     std::uint8_t slave_id_;
+    std::uint8_t pdu_size_;
 
-    std::vector<std::byte> pdu_;
+    std::array<std::byte, kMaxPduSize> pdu_{};
 };
 
 }  // namespace modbus
