@@ -45,8 +45,7 @@ public:
         return Create(static_cast<FunctionCode>(ToNormalFunctionCode(raw_fc)), static_cast<ExceptionCode>(raw_ec));
     }
 
-    [[nodiscard]] userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out
-    ) const noexcept {
+    userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out) const noexcept {
         if (out.size() < kEncodedSize) {
             return userver::utils::unexpected{ParseError::kBufferTooShort};
         }

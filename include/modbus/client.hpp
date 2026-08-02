@@ -26,48 +26,48 @@ public:
 
     [[nodiscard]] virtual std::uint8_t GetSlaveId() const noexcept = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadCoils(
+    virtual userver::utils::expected<void, ClientError> ReadCoils(
         std::uint16_t address,
         std::uint16_t quantity,
         std::span<Coil> out_coils
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadDiscreteInputs(
+    virtual userver::utils::expected<void, ClientError> ReadDiscreteInputs(
         std::uint16_t address,
         std::uint16_t quantity,
         std::span<DiscreteInput> out_inputs
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadHoldingRegisters(
+    virtual userver::utils::expected<void, ClientError> ReadHoldingRegisters(
         std::uint16_t address,
         std::uint16_t quantity,
         std::span<std::uint16_t> out_registers
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadInputRegisters(
+    virtual userver::utils::expected<void, ClientError> ReadInputRegisters(
         std::uint16_t address,
         std::uint16_t quantity,
         std::span<std::uint16_t> out_registers
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteCoil(std::uint16_t address, Coil value) = 0;
+    virtual userver::utils::expected<void, ClientError> WriteCoil(std::uint16_t address, Coil value) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteCoils(
+    virtual userver::utils::expected<void, ClientError> WriteCoils(
         std::uint16_t address,
         std::span<const Coil> values
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteHoldingRegister(
+    virtual userver::utils::expected<void, ClientError> WriteHoldingRegister(
         std::uint16_t address,
         std::uint16_t value
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteHoldingRegisters(
+    virtual userver::utils::expected<void, ClientError> WriteHoldingRegisters(
         std::uint16_t address,
         std::span<const std::uint16_t> values
     ) = 0;
 
-    [[nodiscard]] virtual userver::utils::expected<std::size_t, ClientError> SendRawRequest(
+    virtual userver::utils::expected<std::size_t, ClientError> SendRawRequest(
         std::span<const std::byte> request_pdu,
         std::span<std::byte> response_pdu_out
     ) = 0;

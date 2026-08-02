@@ -59,8 +59,7 @@ public:
         return Create(*address, *quantity);
     }
 
-    [[nodiscard]] userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out
-    ) const noexcept {
+    userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out) const noexcept {
         if (out.size() < kEncodedSize) {
             return userver::utils::unexpected{ParseError::kBufferTooShort};
         }

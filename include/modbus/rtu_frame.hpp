@@ -20,10 +20,8 @@ public:
     static constexpr std::size_t kMinFrameSize = 3;
     static constexpr std::size_t kMaxFrameSize = 256;
 
-    [[nodiscard]] static userver::utils::expected<RtuFrame, RtuError> Create(
-        std::uint8_t slave_id,
-        std::span<const std::byte> pdu
-    ) noexcept {
+    static userver::utils::expected<RtuFrame, RtuError> Create(std::uint8_t slave_id, std::span<const std::byte> pdu)
+        noexcept {
         if (pdu.size() > kMaxPduSize) {
             return userver::utils::unexpected{RtuError::kPduTooLarge};
         }
@@ -31,7 +29,7 @@ public:
         return RtuFrame{slave_id, pdu};
     }
 
-    [[nodiscard]] static userver::utils::expected<RtuFrame, RtuError> Deserialize(std::span<const std::byte>& buffer) {
+    static userver::utils::expected<RtuFrame, RtuError> Deserialize(std::span<const std::byte>& buffer) {
         if (buffer.size() < kMinFrameSize) {
             return userver::utils::unexpected{RtuError::kBufferTooShort};
         }
