@@ -1,11 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <type_traits>
-#include <utility>
-#include <vector>
 
 #include <modbus/coil.hpp>
 #include <modbus/discrete_input.hpp>
@@ -25,37 +25,21 @@ public:
 
     static constexpr FunctionCode kFunctionCode{Code};
 
-    static userver::utils::expected<ReadMultiple, ParseError> Create(std::vector<T> values) {
+    static userver::utils::expected<ReadMultiple, ParseError> Create(std::span<const T> values) noexcept {
         const auto quantity = values.size();
 
         if (quantity < kMinQuantity || quantity > kMaxQuantity) {
             return userver::utils::unexpected{ParseError::kInvalidQuantity};
         }
 
-        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
-            for (const auto val : values) {
-                if constexpr (std::is_same_v<T, Coil>) {
-                    if (val != Coil::kOn && val != Coil::kOff) {
-                        return userver::utils::unexpected{ParseError::kInvalidValue};
-                    }
-                } else {
-                    if (val != DiscreteInput::kOn && val != DiscreteInput::kOff) {
-                        return userver::utils::unexpected{ParseError::kInvalidValue};
-                    }
-                }
-            }
-        }
-
-        return ReadMultiple{std::move(values)};
+        return ReadMultiple{values};
     }
 
-    template <typename InputIt>
     static userver::utils::expected<ReadMultiple, ParseError> Deserialize(
-        InputIt& first,
-        InputIt last,
+        std::span<const std::byte>& buffer,
         std::uint16_t expected_quantity
-    ) {
-        const auto function_code = ReadBe<std::uint8_t>(first, last);
+    ) noexcept {
+        const auto function_code = ReadBe<std::uint8_t>(buffer);
         if (!function_code) {
             return userver::utils::unexpected{function_code.error()};
         }
@@ -64,12 +48,13 @@ public:
             return userver::utils::unexpected{ParseError::kInvalidFunctionCode};
         }
 
-        const auto byte_count = ReadBe<std::uint8_t>(first, last);
+        const auto byte_count = ReadBe<std::uint8_t>(buffer);
         if (!byte_count) {
             return userver::utils::unexpected{byte_count.error()};
         }
 
-        std::vector<T> values;
+        std::array<T, MaxQty> parsed_values;
+        std::uint16_t actual_quantity = 0;
 
         if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             if (expected_quantity < kMinQuantity || expected_quantity > kMaxQuantity) {
@@ -81,11 +66,9 @@ public:
                 return userver::utils::unexpected{ParseError::kInvalidValue};
             }
 
-            values.reserve(expected_quantity);
-
             std::uint16_t bits_read = 0;
             for (std::size_t i = 0; i < *byte_count; ++i) {
-                const auto current_byte = ReadBe<std::uint8_t>(first, last);
+                const auto current_byte = ReadBe<std::uint8_t>(buffer);
                 if (!current_byte) {
                     return userver::utils::unexpected{current_byte.error()};
                 }
@@ -93,56 +76,56 @@ public:
                 for (std::uint8_t bit = 0; bit < 8 && bits_read < expected_quantity; ++bit, ++bits_read) {
                     const bool is_set = (*current_byte & (1U << bit)) != 0;
                     if constexpr (std::is_same_v<T, Coil>) {
-                        values.push_back(is_set ? Coil::kOn : Coil::kOff);
+                        parsed_values[bits_read] = is_set ? Coil::kOn : Coil::kOff;
                     } else {
-                        values.push_back(is_set ? DiscreteInput::kOn : DiscreteInput::kOff);
+                        parsed_values[bits_read] = is_set ? DiscreteInput::kOn : DiscreteInput::kOff;
                     }
                 }
             }
+            actual_quantity = expected_quantity;
         } else {
             if (*byte_count % sizeof(std::uint16_t) != 0) {
                 return userver::utils::unexpected{ParseError::kInvalidValue};
             }
 
-            const auto register_count = *byte_count / sizeof(std::uint16_t);
+            const auto register_count = static_cast<std::uint16_t>(*byte_count / sizeof(std::uint16_t));
             if (register_count < kMinQuantity || register_count > kMaxQuantity) {
                 return userver::utils::unexpected{ParseError::kInvalidQuantity};
             }
 
-            values.reserve(register_count);
-
             for (std::size_t i = 0; i < register_count; ++i) {
-                const auto reg = ReadBe<std::uint16_t>(first, last);
+                const auto reg = ReadBe<std::uint16_t>(buffer);
                 if (!reg) {
                     return userver::utils::unexpected{reg.error()};
                 }
-                values.push_back(*reg);
+                parsed_values[i] = *reg;
             }
+            actual_quantity = register_count;
         }
 
-        if (first != last) {
-            return userver::utils::unexpected{ParseError::kExtraDataAtEnd};
-        }
-
-        return ReadMultiple{std::move(values)};
+        return Create(std::span<const T>{parsed_values.data(), actual_quantity});
     }
 
-    template <typename OutputIt>
-    [[nodiscard]] OutputIt Serialize(OutputIt out
-    ) const noexcept(noexcept(WriteBe(out, static_cast<std::uint8_t>(kFunctionCode)))) {
-        out = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
-        out = WriteBe(out, GetByteCount());
+    userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out) const noexcept {
+        const std::size_t required_size = GetEncodedSize();
+        if (out.size() < required_size) {
+            return userver::utils::unexpected{ParseError::kBufferTooShort};
+        }
+
+        std::ignore = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
+        std::ignore = WriteBe(out, GetByteCount());
 
         if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             std::uint8_t current_byte = 0;
             std::uint8_t bit_index = 0;
 
-            for (const auto& val : values_) {
+            for (std::size_t i = 0; i < quantity_; ++i) {
+                const auto& val = values_[i];
                 bool is_set = false;
                 if constexpr (std::is_same_v<T, Coil>) {
                     is_set = (val == Coil::kOn);
                 } else {
-                    is_set = static_cast<bool>(val);
+                    is_set = (val == DiscreteInput::kOn);
                 }
 
                 if (is_set) {
@@ -151,44 +134,48 @@ public:
 
                 ++bit_index;
                 if (bit_index == 8) {
-                    out = WriteBe(out, current_byte);
+                    std::ignore = WriteBe(out, current_byte);
                     current_byte = 0;
                     bit_index = 0;
                 }
             }
 
             if (bit_index > 0) {
-                out = WriteBe(out, current_byte);
+                std::ignore = WriteBe(out, current_byte);
             }
         } else {
-            for (const auto reg : values_) {
-                out = WriteBe(out, reg);
+            for (std::size_t i = 0; i < quantity_; ++i) {
+                std::ignore = WriteBe(out, values_[i]);
             }
         }
 
         return out;
     }
 
-    [[nodiscard]] std::uint8_t GetByteCount() const noexcept {
+    [[nodiscard]] constexpr std::uint8_t GetByteCount() const noexcept {
         if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
-            return static_cast<std::uint8_t>(BitsToBytes(values_.size()));
+            return static_cast<std::uint8_t>(BitsToBytes(quantity_));
         } else {
-            return static_cast<std::uint8_t>(values_.size() * sizeof(T));
+            return static_cast<std::uint8_t>(quantity_ * sizeof(T));
         }
     }
 
-    [[nodiscard]] std::span<const T> GetValues() const noexcept { return values_; }
+    [[nodiscard]] constexpr std::size_t GetEncodedSize() const noexcept { return 2 + GetByteCount(); }
 
-    [[nodiscard]] std::span<const T> GetRegisters() const noexcept
-    requires std::is_same_v<T, std::uint16_t>
-    {
-        return values_;
+    [[nodiscard]] constexpr std::uint16_t GetQuantity() const noexcept { return quantity_; }
+
+    [[nodiscard]] constexpr std::span<const T> GetValues() const noexcept {
+        return std::span<const T>{values_.data(), quantity_};
     }
 
 private:
-    explicit ReadMultiple(std::vector<T> values) noexcept : values_{std::move(values)} {}
+    ReadMultiple(std::span<const T> values) noexcept : quantity_{static_cast<std::uint16_t>(values.size())} {
+        std::copy(values.begin(), values.end(), values_.begin());
+    }
 
-    std::vector<T> values_;
+    std::uint16_t quantity_;
+
+    std::array<T, MaxQty> values_;
 };
 
 }  // namespace modbus::response::impl

@@ -1,125 +1,143 @@
-#include <userver/utest/utest.hpp>
-
+#include <algorithm>
+#include <array>
 #include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <span>
 #include <vector>
 
+#include <userver/utest/utest.hpp>
+
 #include <modbus/rtu_frame.hpp>
 
-namespace {
-
-std::vector<std::byte> MakeBytes(std::initializer_list<std::uint8_t> bytes) {
-    std::vector<std::byte> result;
-    result.reserve(bytes.size());
-    for (const auto b : bytes) {
-        result.push_back(static_cast<std::byte>(b));
-    }
-    return result;
-}
-
-bool SpanEq(std::span<const std::byte> actual, std::initializer_list<std::uint8_t> expected) {
-    if (actual.size() != expected.size()) {
-        return false;
-    }
-    auto it = expected.begin();
-    for (const auto& byte : actual) {
-        if (static_cast<std::uint8_t>(byte) != *it++) {
-            return false;
-        }
-    }
-    return true;
-}
-
-}  // namespace
-
 UTEST(RtuFrameTest, CreateSuccess) {
-    auto pdu = MakeBytes({0x03, 0x00, 0x6B, 0x00, 0x03});
-    const auto frame_result = modbus::RtuFrame::Create(0x11, std::move(pdu));
+    const std::array<std::byte, 5>
+        pdu{std::byte{0x03}, std::byte{0x00}, std::byte{0x6B}, std::byte{0x00}, std::byte{0x03}};
+    const auto frame_result = modbus::RtuFrame::Create(0x11, pdu);
 
     ASSERT_TRUE(frame_result.has_value());
     EXPECT_EQ(frame_result->GetSlaveId(), 0x11);
-    EXPECT_TRUE(SpanEq(frame_result->GetPdu(), {0x03, 0x00, 0x6B, 0x00, 0x03}));
+    EXPECT_TRUE(std::ranges::equal(frame_result->GetPdu(), pdu));
+    EXPECT_EQ(frame_result->GetFrameSize(), 8);
 }
 
 UTEST(RtuFrameTest, CreateFailsWhenPduTooLarge) {
-    auto huge_pdu = std::vector<std::byte>(modbus::RtuFrame::kMaxPduSize + 1, std::byte{0});
-    const auto frame_result = modbus::RtuFrame::Create(0x01, std::move(huge_pdu));
+    const std::vector<std::byte> huge_pdu(modbus::kMaxPduSize + 1, std::byte{0});
+    const auto frame_result = modbus::RtuFrame::Create(0x01, huge_pdu);
 
     ASSERT_FALSE(frame_result.has_value());
     EXPECT_EQ(frame_result.error(), modbus::RtuError::kPduTooLarge);
 }
 
-UTEST(RtuFrameTest, Serialize) {
-    auto pdu = MakeBytes({0x03, 0x00, 0x6B, 0x00, 0x03});
-    const auto frame = modbus::RtuFrame::Create(0x11, std::move(pdu)).value();
+UTEST(RtuFrameTest, SerializeSuccess) {
+    const std::array<std::byte, 5>
+        pdu{std::byte{0x03}, std::byte{0x00}, std::byte{0x6B}, std::byte{0x00}, std::byte{0x03}};
+    const auto frame = modbus::RtuFrame::Create(0x11, pdu).value();
 
-    std::vector<std::byte> serialized_data;
-    std::ignore = frame.Serialize(std::back_inserter(serialized_data));
+    std::array<std::byte, 8> out_buffer{};
+    const auto result = frame.Serialize(out_buffer);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 
-    const auto expected_data = MakeBytes({0x11, 0x03, 0x00, 0x6B, 0x00, 0x03, 0x76, 0x87});
+    const std::array<std::byte, 8> expected{
+        std::byte{0x11},
+        std::byte{0x03},
+        std::byte{0x00},
+        std::byte{0x6B},
+        std::byte{0x00},
+        std::byte{0x03},
+        std::byte{0x76},
+        std::byte{0x87}
+    };
+    EXPECT_EQ(out_buffer, expected);
+}
 
-    EXPECT_EQ(serialized_data, expected_data);
+UTEST(RtuFrameTest, SerializeBufferTooShort) {
+    const std::array<std::byte, 5>
+        pdu{std::byte{0x03}, std::byte{0x00}, std::byte{0x6B}, std::byte{0x00}, std::byte{0x03}};
+    const auto frame = modbus::RtuFrame::Create(0x11, pdu).value();
+
+    std::array<std::byte, 7> out_buffer{};
+    const auto result = frame.Serialize(out_buffer);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), modbus::RtuError::kBufferTooShort);
 }
 
 UTEST(RtuFrameTest, DeserializeSuccess) {
-    const auto buffer = MakeBytes({0x11, 0x03, 0x00, 0x6B, 0x00, 0x03, 0x76, 0x87});
+    const std::array<std::byte, 8> raw_buffer{
+        std::byte{0x11},
+        std::byte{0x03},
+        std::byte{0x00},
+        std::byte{0x6B},
+        std::byte{0x00},
+        std::byte{0x03},
+        std::byte{0x76},
+        std::byte{0x87}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    auto it = buffer.cbegin();
-    const auto frame_result = modbus::RtuFrame::Deserialize(it, buffer.cend());
+    const auto frame_result = modbus::RtuFrame::Deserialize(buffer);
 
     ASSERT_TRUE(frame_result.has_value());
     EXPECT_EQ(frame_result->GetSlaveId(), 0x11);
-    EXPECT_TRUE(SpanEq(frame_result->GetPdu(), {0x03, 0x00, 0x6B, 0x00, 0x03}));
 
-    EXPECT_EQ(it, buffer.cend());
+    const std::array<std::byte, 5>
+        expected_pdu{std::byte{0x03}, std::byte{0x00}, std::byte{0x6B}, std::byte{0x00}, std::byte{0x03}};
+    EXPECT_TRUE(std::ranges::equal(frame_result->GetPdu(), expected_pdu));
+    EXPECT_TRUE(buffer.empty());
 }
 
 UTEST(RtuFrameTest, DeserializeFailsBufferTooShort) {
-    const auto buffer = MakeBytes({0x11, 0x03});
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x11}, std::byte{0x03}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    auto it = buffer.cbegin();
-    const auto frame_result = modbus::RtuFrame::Deserialize(it, buffer.cend());
+    const auto frame_result = modbus::RtuFrame::Deserialize(buffer);
 
     ASSERT_FALSE(frame_result.has_value());
     EXPECT_EQ(frame_result.error(), modbus::RtuError::kBufferTooShort);
 }
 
 UTEST(RtuFrameTest, DeserializeFailsPduTooLarge) {
-    const auto buffer = std::vector<
-        std::byte>(modbus::RtuFrame::kMinFrameSize + modbus::RtuFrame::kMaxPduSize + 1, std::byte{0});
+    const std::vector<std::byte> raw_buffer(modbus::RtuFrame::kMinFrameSize + modbus::kMaxPduSize + 1, std::byte{0});
+    std::span<const std::byte> buffer{raw_buffer};
 
-    auto it = buffer.cbegin();
-    const auto frame_result = modbus::RtuFrame::Deserialize(it, buffer.cend());
+    const auto frame_result = modbus::RtuFrame::Deserialize(buffer);
 
     ASSERT_FALSE(frame_result.has_value());
     EXPECT_EQ(frame_result.error(), modbus::RtuError::kPduTooLarge);
 }
 
 UTEST(RtuFrameTest, DeserializeFailsInvalidCrc) {
-    const auto buffer = MakeBytes({0x11, 0x03, 0x00, 0x6B, 0x00, 0x03, 0x76, 0xFF});
+    const std::array<std::byte, 8> raw_buffer{
+        std::byte{0x11},
+        std::byte{0x03},
+        std::byte{0x00},
+        std::byte{0x6B},
+        std::byte{0x00},
+        std::byte{0x03},
+        std::byte{0x76},
+        std::byte{0xFF}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    auto it = buffer.cbegin();
-    const auto frame_result = modbus::RtuFrame::Deserialize(it, buffer.cend());
+    const auto frame_result = modbus::RtuFrame::Deserialize(buffer);
 
     ASSERT_FALSE(frame_result.has_value());
     EXPECT_EQ(frame_result.error(), modbus::RtuError::kInvalidCrc);
 }
 
 UTEST(RtuFrameTest, RoundtripWithEmptyPdu) {
-    std::vector<std::byte> empty_pdu;
-    const auto frame = modbus::RtuFrame::Create(0x01, std::move(empty_pdu)).value();
+    const std::array<std::byte, 0> empty_pdu{};
+    const auto frame = modbus::RtuFrame::Create(0x01, empty_pdu).value();
 
-    std::vector<std::byte> serialized_data;
-    std::ignore = frame.Serialize(std::back_inserter(serialized_data));
+    std::array<std::byte, 3> serialized_data{};
+    const auto ser_result = frame.Serialize(serialized_data);
+    ASSERT_TRUE(ser_result.has_value());
+    EXPECT_TRUE(ser_result->empty());
 
-    EXPECT_EQ(serialized_data.size(), 3);
-
-    auto it = serialized_data.cbegin();
-    const auto deserialized_frame = modbus::RtuFrame::Deserialize(it, serialized_data.cend());
+    std::span<const std::byte> buffer{serialized_data};
+    const auto deserialized_frame = modbus::RtuFrame::Deserialize(buffer);
 
     ASSERT_TRUE(deserialized_frame.has_value());
     EXPECT_EQ(deserialized_frame->GetSlaveId(), 0x01);
     EXPECT_TRUE(deserialized_frame->GetPdu().empty());
+    EXPECT_TRUE(buffer.empty());
 }

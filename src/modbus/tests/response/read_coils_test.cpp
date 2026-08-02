@@ -1,11 +1,15 @@
+#include <array>
+#include <cstddef>
+#include <span>
 #include <vector>
 
 #include <userver/utest/utest.hpp>
 
+#include <modbus/parse_error.hpp>
 #include <modbus/response/read_coils.hpp>
 
 UTEST(ResponseReadCoilsTest, CreateSuccess) {
-    const std::vector<modbus::Coil> coils{modbus::Coil::kOn, modbus::Coil::kOff, modbus::Coil::kOn};
+    const std::array coils{modbus::Coil::kOn, modbus::Coil::kOff, modbus::Coil::kOn};
     const auto response = modbus::response::ReadCoils::Create(coils);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 1);
@@ -13,7 +17,7 @@ UTEST(ResponseReadCoilsTest, CreateSuccess) {
 }
 
 UTEST(ResponseReadCoilsTest, CreateMinQuantity) {
-    const std::vector<modbus::Coil> coils{modbus::Coil::kOn};
+    const std::array coils{modbus::Coil::kOn};
     const auto response = modbus::response::ReadCoils::Create(coils);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetValues().size(), 1);
@@ -27,7 +31,7 @@ UTEST(ResponseReadCoilsTest, CreateMaxQuantity) {
 }
 
 UTEST(ResponseReadCoilsTest, CreateInvalidQuantityZero) {
-    const std::vector<modbus::Coil> coils{};
+    const std::array<modbus::Coil, 0> coils{};
     const auto response = modbus::response::ReadCoils::Create(coils);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
@@ -40,15 +44,8 @@ UTEST(ResponseReadCoilsTest, CreateInvalidQuantityOverflow) {
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
-UTEST(ResponseReadCoilsTest, CreateInvalidValue) {
-    const std::vector<modbus::Coil> coils{static_cast<modbus::Coil>(0x1234)};
-    const auto response = modbus::response::ReadCoils::Create(coils);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kInvalidValue);
-}
-
-UTEST(ResponseReadCoilsTest, Serialize) {
-    const std::vector<modbus::Coil> coils{
+UTEST(ResponseReadCoilsTest, SerializeSuccess) {
+    const std::array coils{
         modbus::Coil::kOn,
         modbus::Coil::kOff,
         modbus::Coil::kOn,
@@ -62,18 +59,31 @@ UTEST(ResponseReadCoilsTest, Serialize) {
     const auto response = modbus::response::ReadCoils::Create(coils);
     ASSERT_TRUE(response.has_value());
 
-    std::vector<std::uint8_t> buffer;
-    std::ignore = response->Serialize(std::back_inserter(buffer));
+    std::array<std::byte, 4> out_buffer{};
+    const auto result = response->Serialize(out_buffer);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 
-    const std::vector<std::uint8_t> expected{0x01, 0x02, 0x65, 0x01};
-    EXPECT_EQ(buffer, expected);
+    const std::array<std::byte, 4> expected{std::byte{0x01}, std::byte{0x02}, std::byte{0x65}, std::byte{0x01}};
+    EXPECT_EQ(out_buffer, expected);
+}
+
+UTEST(ResponseReadCoilsTest, SerializeBufferTooShort) {
+    const std::array coils{modbus::Coil::kOn, modbus::Coil::kOff, modbus::Coil::kOn};
+    const auto response = modbus::response::ReadCoils::Create(coils);
+    ASSERT_TRUE(response.has_value());
+
+    std::array<std::byte, 2> out_buffer{};
+    const auto result = response->Serialize(out_buffer);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(ResponseReadCoilsTest, DeserializeSuccess) {
-    const std::vector<std::uint8_t> buffer{0x01, 0x02, 0x65, 0x01};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 4> raw_buffer{std::byte{0x01}, std::byte{0x02}, std::byte{0x65}, std::byte{0x01}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 9);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 9);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 2);
 
@@ -88,77 +98,77 @@ UTEST(ResponseReadCoilsTest, DeserializeSuccess) {
     EXPECT_EQ(values[6], modbus::Coil::kOn);
     EXPECT_EQ(values[7], modbus::Coil::kOff);
     EXPECT_EQ(values[8], modbus::Coil::kOn);
-    EXPECT_EQ(it, buffer.cend());
+    EXPECT_TRUE(buffer.empty());
 }
 
 UTEST(ResponseReadCoilsTest, DeserializeBufferTooShortFc) {
-    const std::vector<std::uint8_t> buffer{};
-    auto it = buffer.cbegin();
+    std::span<const std::byte> buffer{};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 1);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 1);
+    ASSERT_FALSE(response.has_value());
+    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(ResponseReadCoilsTest, DeserializeBufferTooShortByteCount) {
+    const std::array<std::byte, 1> raw_buffer{std::byte{0x01}};
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 1);
+    ASSERT_FALSE(response.has_value());
+    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(ResponseReadCoilsTest, DeserializeBufferTooShortData) {
+    const std::array<std::byte, 3> raw_buffer{std::byte{0x01}, std::byte{0x02}, std::byte{0x65}};
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 9);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(ResponseReadCoilsTest, DeserializeInvalidFunctionCode) {
-    const std::vector<std::uint8_t> buffer{0x02, 0x01, 0x01};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 3> raw_buffer{std::byte{0x02}, std::byte{0x01}, std::byte{0x01}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 1);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 1);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidFunctionCode);
 }
 
-UTEST(ResponseReadCoilsTest, DeserializeBufferTooShortByteCount) {
-    const std::vector<std::uint8_t> buffer{0x01};
-    auto it = buffer.cbegin();
-
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 1);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
-}
-
 UTEST(ResponseReadCoilsTest, DeserializeInvalidQuantityZero) {
-    const std::vector<std::uint8_t> buffer{0x01, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x01}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 0);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 0);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(ResponseReadCoilsTest, DeserializeInvalidQuantityOverflow) {
-    const std::vector<std::uint8_t> buffer{0x01, 0xFA};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x01}, std::byte{0xFA}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 2001);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 2001);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(ResponseReadCoilsTest, DeserializeInvalidByteCount) {
-    const std::vector<std::uint8_t> buffer{0x01, 0x01, 0x65};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 3> raw_buffer{std::byte{0x01}, std::byte{0x01}, std::byte{0x65}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 9);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 9);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidValue);
 }
 
-UTEST(ResponseReadCoilsTest, DeserializeBufferTooShortData) {
-    const std::vector<std::uint8_t> buffer{0x01, 0x02, 0x65};
-    auto it = buffer.cbegin();
+UTEST(ResponseReadCoilsTest, DeserializePreservesTailBuffer) {
+    const std::array<std::byte, 4> raw_buffer{std::byte{0x01}, std::byte{0x01}, std::byte{0x01}, std::byte{0xFF}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 9);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
-}
-
-UTEST(ResponseReadCoilsTest, DeserializeExtraDataAtEnd) {
-    const std::vector<std::uint8_t> buffer{0x01, 0x01, 0x01, 0xFF};
-    auto it = buffer.cbegin();
-
-    const auto response = modbus::response::ReadCoils::Deserialize(it, buffer.cend(), 1);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kExtraDataAtEnd);
+    const auto response = modbus::response::ReadCoils::Deserialize(buffer, 1);
+    ASSERT_TRUE(response.has_value());
+    EXPECT_EQ(buffer.size(), 1);
+    EXPECT_EQ(buffer[0], std::byte{0xFF});
 }

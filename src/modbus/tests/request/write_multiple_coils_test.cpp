@@ -1,7 +1,11 @@
+#include <array>
+#include <cstddef>
+#include <span>
 #include <vector>
 
 #include <userver/utest/utest.hpp>
 
+#include <modbus/parse_error.hpp>
 #include <modbus/request/write_multiple_coils.hpp>
 
 UTEST(RequestWriteMultipleCoilsTest, CreateSuccess) {
@@ -23,7 +27,6 @@ UTEST(RequestWriteMultipleCoilsTest, CreateSuccess) {
     EXPECT_EQ(request->GetQuantity(), 10);
     EXPECT_EQ(request->GetByteCount(), 2);
     EXPECT_EQ(request->GetValues().size(), 10);
-    EXPECT_EQ(request->GetCoils().size(), 10);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, CreateMinQuantity) {
@@ -68,7 +71,7 @@ UTEST(RequestWriteMultipleCoilsTest, CreateInvalidValue) {
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidValue);
 }
 
-UTEST(RequestWriteMultipleCoilsTest, Serialize) {
+UTEST(RequestWriteMultipleCoilsTest, SerializeSuccess) {
     const std::vector<modbus::Coil> coils{
         modbus::Coil::kOn,
         modbus::Coil::kOff,
@@ -84,24 +87,55 @@ UTEST(RequestWriteMultipleCoilsTest, Serialize) {
     const auto request = modbus::request::WriteMultipleCoils::Create(0x0013, coils);
     ASSERT_TRUE(request.has_value());
 
-    std::vector<std::uint8_t> buffer;
-    std::ignore = request->Serialize(std::back_inserter(buffer));
+    std::array<std::byte, 8> out_buffer{};
+    const auto result = request->Serialize(out_buffer);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 
-    const std::vector<std::uint8_t> expected{0x0F, 0x00, 0x13, 0x00, 0x0A, 0x02, 0x65, 0x01};
-    EXPECT_EQ(buffer, expected);
+    const std::array<std::byte, 8> expected{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x02},
+        std::byte{0x65},
+        std::byte{0x01}
+    };
+    EXPECT_EQ(out_buffer, expected);
+}
+
+UTEST(RequestWriteMultipleCoilsTest, SerializeBufferTooShort) {
+    const std::vector<modbus::Coil> coils{modbus::Coil::kOn};
+    const auto request = modbus::request::WriteMultipleCoils::Create(0x0000, coils);
+    ASSERT_TRUE(request.has_value());
+
+    std::array<std::byte, 6> out_buffer{};
+    const auto result = request->Serialize(out_buffer);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeSuccess) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00, 0x0A, 0x02, 0x65, 0x01};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 8> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x02},
+        std::byte{0x65},
+        std::byte{0x01}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_TRUE(request.has_value());
     EXPECT_EQ(request->GetAddress(), 0x0013);
     EXPECT_EQ(request->GetQuantity(), 10);
     EXPECT_EQ(request->GetByteCount(), 2);
 
-    const auto coils = request->GetCoils();
+    const auto coils = request->GetValues();
     ASSERT_EQ(coils.size(), 10);
     EXPECT_EQ(coils[0], modbus::Coil::kOn);
     EXPECT_EQ(coils[1], modbus::Coil::kOff);
@@ -113,104 +147,164 @@ UTEST(RequestWriteMultipleCoilsTest, DeserializeSuccess) {
     EXPECT_EQ(coils[7], modbus::Coil::kOff);
     EXPECT_EQ(coils[8], modbus::Coil::kOn);
     EXPECT_EQ(coils[9], modbus::Coil::kOff);
-    EXPECT_EQ(it, buffer.cend());
+    EXPECT_TRUE(buffer.empty());
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortFc) {
-    const std::vector<std::uint8_t> buffer{};
-    auto it = buffer.cbegin();
+    std::span<const std::byte> buffer{};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortAddress) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x0F}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortQuantity) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 4> raw_buffer{std::byte{0x0F}, std::byte{0x00}, std::byte{0x13}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
+    ASSERT_FALSE(request.has_value());
+    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortByteCount) {
+    const std::array<std::byte, 5>
+        raw_buffer{std::byte{0x0F}, std::byte{0x00}, std::byte{0x13}, std::byte{0x00}, std::byte{0x0A}};
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
+    ASSERT_FALSE(request.has_value());
+    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortDataBytes) {
+    const std::array<std::byte, 7> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x02},
+        std::byte{0x65}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeInvalidFunctionCode) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x13, 0x00, 0x0A, 0x02, 0x65, 0x01};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 8> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x02},
+        std::byte{0x65},
+        std::byte{0x01}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidFunctionCode);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeInvalidQuantityUnderflow) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00, 0x00, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 6> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x00},
+        std::byte{0x00}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeInvalidQuantityOverflow) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x07, 0xB1, 0xF6};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 6> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x07},
+        std::byte{0xB1},
+        std::byte{0xF6}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, DeserializeAddressOverflow) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0xFF, 0xFF, 0x00, 0x02, 0x01, 0x03};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 7> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0xFF},
+        std::byte{0xFF},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x01},
+        std::byte{0x03}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kAddressOverflow);
 }
 
-UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortByteCount) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00, 0x0A};
-    auto it = buffer.cbegin();
-
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
-    ASSERT_FALSE(request.has_value());
-    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
-}
-
 UTEST(RequestWriteMultipleCoilsTest, DeserializeInvalidByteCount) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00, 0x0A, 0x03, 0x65, 0x01, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 9> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x03},
+        std::byte{0x65},
+        std::byte{0x01},
+        std::byte{0x00}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidQuantity);
 }
 
-UTEST(RequestWriteMultipleCoilsTest, DeserializeBufferTooShortDataBytes) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00, 0x0A, 0x02, 0x65};
-    auto it = buffer.cbegin();
+UTEST(RequestWriteMultipleCoilsTest, DeserializePreservesTailBuffer) {
+    const std::array<std::byte, 9> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x13},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x02},
+        std::byte{0x65},
+        std::byte{0x01},
+        std::byte{0xFF}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
-    ASSERT_FALSE(request.has_value());
-    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
-}
-
-UTEST(RequestWriteMultipleCoilsTest, DeserializeExtraDataAtEnd) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x13, 0x00, 0x0A, 0x02, 0x65, 0x01, 0xFF};
-    auto it = buffer.cbegin();
-
-    const auto request = modbus::request::WriteMultipleCoils::Deserialize(it, buffer.cend());
-    ASSERT_FALSE(request.has_value());
-    EXPECT_EQ(request.error(), modbus::ParseError::kExtraDataAtEnd);
+    const auto request = modbus::request::WriteMultipleCoils::Deserialize(buffer);
+    ASSERT_TRUE(request.has_value());
+    EXPECT_EQ(buffer.size(), 1);
+    EXPECT_EQ(buffer[0], std::byte{0xFF});
 }

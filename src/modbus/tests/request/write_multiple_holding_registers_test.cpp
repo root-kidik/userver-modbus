@@ -1,7 +1,12 @@
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
 #include <vector>
 
 #include <userver/utest/utest.hpp>
 
+#include <modbus/parse_error.hpp>
 #include <modbus/request/write_multiple_holding_registers.hpp>
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, CreateSuccess) {
@@ -12,7 +17,6 @@ UTEST(RequestWriteMultipleHoldingRegistersTest, CreateSuccess) {
     EXPECT_EQ(request->GetQuantity(), 2);
     EXPECT_EQ(request->GetByteCount(), 4);
     EXPECT_EQ(request->GetValues().size(), 2);
-    EXPECT_EQ(request->GetRegisters().size(), 2);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, CreateMinQuantity) {
@@ -50,130 +54,235 @@ UTEST(RequestWriteMultipleHoldingRegistersTest, CreateAddressOverflow) {
     EXPECT_EQ(request.error(), modbus::ParseError::kAddressOverflow);
 }
 
-UTEST(RequestWriteMultipleHoldingRegistersTest, Serialize) {
+UTEST(RequestWriteMultipleHoldingRegistersTest, SerializeSuccess) {
     const std::vector<std::uint16_t> registers{0x000A, 0x0102};
     const auto request = modbus::request::WriteMultipleHoldingRegisters::Create(0x0001, registers);
     ASSERT_TRUE(request.has_value());
 
-    std::vector<std::uint8_t> buffer;
-    std::ignore = request->Serialize(std::back_inserter(buffer));
+    std::array<std::byte, 10> out_buffer{};
+    const auto result = request->Serialize(out_buffer);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 
-    const std::vector<std::uint8_t> expected{0x10, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x0A, 0x01, 0x02};
-    EXPECT_EQ(buffer, expected);
+    const std::array<std::byte, 10> expected{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x04},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x01},
+        std::byte{0x02}
+    };
+    EXPECT_EQ(out_buffer, expected);
+}
+
+UTEST(RequestWriteMultipleHoldingRegistersTest, SerializeBufferTooShort) {
+    const std::vector<std::uint16_t> registers{0x000A};
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Create(0x0001, registers);
+    ASSERT_TRUE(request.has_value());
+
+    std::array<std::byte, 6> out_buffer{};
+    const auto result = request->Serialize(out_buffer);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeSuccess) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x0A, 0x01, 0x02};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 10> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x04},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x01},
+        std::byte{0x02}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_TRUE(request.has_value());
     EXPECT_EQ(request->GetAddress(), 0x0001);
     EXPECT_EQ(request->GetQuantity(), 2);
     EXPECT_EQ(request->GetByteCount(), 4);
 
-    const auto registers = request->GetRegisters();
+    const auto registers = request->GetValues();
     ASSERT_EQ(registers.size(), 2);
     EXPECT_EQ(registers[0], 0x000A);
     EXPECT_EQ(registers[1], 0x0102);
-    EXPECT_EQ(it, buffer.cend());
+    EXPECT_TRUE(buffer.empty());
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortFc) {
-    const std::vector<std::uint8_t> buffer{};
-    auto it = buffer.cbegin();
+    std::span<const std::byte> buffer{};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortAddress) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x10}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortQuantity) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 4> raw_buffer{std::byte{0x10}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
+    ASSERT_FALSE(request.has_value());
+    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortByteCount) {
+    const std::array<std::byte, 5>
+        raw_buffer{std::byte{0x10}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00}, std::byte{0x02}};
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
+    ASSERT_FALSE(request.has_value());
+    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortDataBytes) {
+    const std::array<std::byte, 9> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x04},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x01}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeInvalidFunctionCode) {
-    const std::vector<std::uint8_t> buffer{0x0F, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x0A, 0x01, 0x02};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 10> raw_buffer{
+        std::byte{0x0F},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x04},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x01},
+        std::byte{0x02}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidFunctionCode);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeInvalidQuantityUnderflow) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x00, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 6> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x00},
+        std::byte{0x00}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeInvalidQuantityOverflow) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x7C, 0xF8};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 6> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x7C},
+        std::byte{0xF8}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeAddressOverflow) {
-    const std::vector<std::uint8_t> buffer{0x10, 0xFF, 0xFF, 0x00, 0x02, 0x04, 0x00, 0x01, 0x00, 0x02};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 10> raw_buffer{
+        std::byte{0x10},
+        std::byte{0xFF},
+        std::byte{0xFF},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x04},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kAddressOverflow);
 }
 
-UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortByteCount) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x02};
-    auto it = buffer.cbegin();
-
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
-    ASSERT_FALSE(request.has_value());
-    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
-}
-
 UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeInvalidByteCount) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x02, 0x05, 0x00, 0x0A, 0x01, 0x02};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 10> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x05},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x01},
+        std::byte{0x02}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
     ASSERT_FALSE(request.has_value());
     EXPECT_EQ(request.error(), modbus::ParseError::kInvalidQuantity);
 }
 
-UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeBufferTooShortDataBytes) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x0A, 0x01};
-    auto it = buffer.cbegin();
+UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializePreservesTailBuffer) {
+    const std::array<std::byte, 11> raw_buffer{
+        std::byte{0x10},
+        std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x00},
+        std::byte{0x02},
+        std::byte{0x04},
+        std::byte{0x00},
+        std::byte{0x0A},
+        std::byte{0x01},
+        std::byte{0x02},
+        std::byte{0xBB}
+    };
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
-    ASSERT_FALSE(request.has_value());
-    EXPECT_EQ(request.error(), modbus::ParseError::kBufferTooShort);
-}
-
-UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeExtraDataAtEnd) {
-    const std::vector<std::uint8_t> buffer{0x10, 0x00, 0x01, 0x00, 0x02, 0x04, 0x00, 0x0A, 0x01, 0x02, 0xBB};
-    auto it = buffer.cbegin();
-
-    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(it, buffer.cend());
-    ASSERT_FALSE(request.has_value());
-    EXPECT_EQ(request.error(), modbus::ParseError::kExtraDataAtEnd);
+    const auto request = modbus::request::WriteMultipleHoldingRegisters::Deserialize(buffer);
+    ASSERT_TRUE(request.has_value());
+    EXPECT_EQ(buffer.size(), 1);
+    EXPECT_EQ(buffer[0], std::byte{0xBB});
 }

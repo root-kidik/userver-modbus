@@ -1,20 +1,23 @@
+#include <array>
+#include <cstddef>
+#include <span>
 #include <vector>
 
 #include <userver/utest/utest.hpp>
 
+#include <modbus/parse_error.hpp>
 #include <modbus/response/read_input_registers.hpp>
 
 UTEST(ResponseReadInputRegistersTest, CreateSuccess) {
-    const std::vector<std::uint16_t> registers{0x000A};
+    const std::array<std::uint16_t, 1> registers{0x000A};
     const auto response = modbus::response::ReadInputRegisters::Create(registers);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 2);
     EXPECT_EQ(response->GetValues().size(), 1);
-    EXPECT_EQ(response->GetRegisters().size(), 1);
 }
 
 UTEST(ResponseReadInputRegistersTest, CreateMinQuantity) {
-    const std::vector<std::uint16_t> registers{0x0001};
+    const std::array<std::uint16_t, 1> registers{0x0001};
     const auto response = modbus::response::ReadInputRegisters::Create(registers);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetValues().size(), 1);
@@ -28,7 +31,7 @@ UTEST(ResponseReadInputRegistersTest, CreateMaxQuantity) {
 }
 
 UTEST(ResponseReadInputRegistersTest, CreateInvalidQuantityZero) {
-    const std::vector<std::uint16_t> registers{};
+    const std::array<std::uint16_t, 0> registers{};
     const auto response = modbus::response::ReadInputRegisters::Create(registers);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
@@ -41,100 +44,114 @@ UTEST(ResponseReadInputRegistersTest, CreateInvalidQuantityOverflow) {
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
-UTEST(ResponseReadInputRegistersTest, Serialize) {
-    const std::vector<std::uint16_t> registers{0x000A};
+UTEST(ResponseReadInputRegistersTest, SerializeSuccess) {
+    const std::array<std::uint16_t, 1> registers{0x000A};
     const auto response = modbus::response::ReadInputRegisters::Create(registers);
     ASSERT_TRUE(response.has_value());
 
-    std::vector<std::uint8_t> buffer;
-    std::ignore = response->Serialize(std::back_inserter(buffer));
+    std::array<std::byte, 4> out_buffer{};
+    const auto result = response->Serialize(out_buffer);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 
-    const std::vector<std::uint8_t> expected{0x04, 0x02, 0x00, 0x0A};
-    EXPECT_EQ(buffer, expected);
+    const std::array<std::byte, 4> expected{std::byte{0x04}, std::byte{0x02}, std::byte{0x00}, std::byte{0x0A}};
+    EXPECT_EQ(out_buffer, expected);
+}
+
+UTEST(ResponseReadInputRegistersTest, SerializeBufferTooShort) {
+    const std::array<std::uint16_t, 1> registers{0x000A};
+    const auto response = modbus::response::ReadInputRegisters::Create(registers);
+    ASSERT_TRUE(response.has_value());
+
+    std::array<std::byte, 3> out_buffer{};
+    const auto result = response->Serialize(out_buffer);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(ResponseReadInputRegistersTest, DeserializeSuccess) {
-    const std::vector<std::uint8_t> buffer{0x04, 0x02, 0x00, 0x0A};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 4> raw_buffer{std::byte{0x04}, std::byte{0x02}, std::byte{0x00}, std::byte{0x0A}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 2);
 
-    const auto registers = response->GetRegisters();
+    const auto registers = response->GetValues();
     ASSERT_EQ(registers.size(), 1);
     EXPECT_EQ(registers[0], 0x000A);
-    EXPECT_EQ(it, buffer.cend());
+    EXPECT_TRUE(buffer.empty());
 }
 
 UTEST(ResponseReadInputRegistersTest, DeserializeBufferTooShortFc) {
-    const std::vector<std::uint8_t> buffer{};
-    auto it = buffer.cbegin();
+    std::span<const std::byte> buffer{};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
+    ASSERT_FALSE(response.has_value());
+    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(ResponseReadInputRegistersTest, DeserializeBufferTooShortByteCount) {
+    const std::array<std::byte, 1> raw_buffer{std::byte{0x04}};
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
+    ASSERT_FALSE(response.has_value());
+    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
+}
+
+UTEST(ResponseReadInputRegistersTest, DeserializeBufferTooShortData) {
+    const std::array<std::byte, 3> raw_buffer{std::byte{0x04}, std::byte{0x02}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
+
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
 }
 
 UTEST(ResponseReadInputRegistersTest, DeserializeInvalidFunctionCode) {
-    const std::vector<std::uint8_t> buffer{0x03, 0x02, 0x00, 0x0A};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 4> raw_buffer{std::byte{0x03}, std::byte{0x02}, std::byte{0x00}, std::byte{0x0A}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidFunctionCode);
 }
 
-UTEST(ResponseReadInputRegistersTest, DeserializeBufferTooShortByteCount) {
-    const std::vector<std::uint8_t> buffer{0x04};
-    auto it = buffer.cbegin();
-
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
-}
-
 UTEST(ResponseReadInputRegistersTest, DeserializeInvalidByteCountOdd) {
-    const std::vector<std::uint8_t> buffer{0x04, 0x01, 0x0A};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 3> raw_buffer{std::byte{0x04}, std::byte{0x01}, std::byte{0x0A}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidValue);
 }
 
 UTEST(ResponseReadInputRegistersTest, DeserializeInvalidQuantityZero) {
-    const std::vector<std::uint8_t> buffer{0x04, 0x00};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x04}, std::byte{0x00}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 0);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 0);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(ResponseReadInputRegistersTest, DeserializeInvalidQuantityOverflow) {
-    const std::vector<std::uint8_t> buffer{0x04, 0xFC};
-    auto it = buffer.cbegin();
+    const std::array<std::byte, 2> raw_buffer{std::byte{0x04}, std::byte{0xFC}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 126);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 126);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
-UTEST(ResponseReadInputRegistersTest, DeserializeBufferTooShortData) {
-    const std::vector<std::uint8_t> buffer{0x04, 0x02, 0x00};
-    auto it = buffer.cbegin();
+UTEST(ResponseReadInputRegistersTest, DeserializePreservesTailBuffer) {
+    const std::array<std::byte, 5>
+        raw_buffer{std::byte{0x04}, std::byte{0x02}, std::byte{0x00}, std::byte{0x0A}, std::byte{0xFF}};
+    std::span<const std::byte> buffer{raw_buffer};
 
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kBufferTooShort);
-}
-
-UTEST(ResponseReadInputRegistersTest, DeserializeExtraDataAtEnd) {
-    const std::vector<std::uint8_t> buffer{0x04, 0x02, 0x00, 0x0A, 0xFF};
-    auto it = buffer.cbegin();
-
-    const auto response = modbus::response::ReadInputRegisters::Deserialize(it, buffer.cend(), 1);
-    ASSERT_FALSE(response.has_value());
-    EXPECT_EQ(response.error(), modbus::ParseError::kExtraDataAtEnd);
+    const auto response = modbus::response::ReadInputRegisters::Deserialize(buffer, 1);
+    ASSERT_TRUE(response.has_value());
+    EXPECT_EQ(buffer.size(), 1);
+    EXPECT_EQ(buffer[0], std::byte{0xFF});
 }
