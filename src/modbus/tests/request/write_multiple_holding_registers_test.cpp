@@ -12,7 +12,6 @@ UTEST(RequestWriteMultipleHoldingRegistersTest, CreateSuccess) {
     EXPECT_EQ(request->GetQuantity(), 2);
     EXPECT_EQ(request->GetByteCount(), 4);
     EXPECT_EQ(request->GetValues().size(), 2);
-    EXPECT_EQ(request->GetRegisters().size(), 2);
 }
 
 UTEST(RequestWriteMultipleHoldingRegistersTest, CreateMinQuantity) {
@@ -72,7 +71,7 @@ UTEST(RequestWriteMultipleHoldingRegistersTest, DeserializeSuccess) {
     EXPECT_EQ(request->GetQuantity(), 2);
     EXPECT_EQ(request->GetByteCount(), 4);
 
-    const auto registers = request->GetRegisters();
+    const auto registers = request->GetValues();
     ASSERT_EQ(registers.size(), 2);
     EXPECT_EQ(registers[0], 0x000A);
     EXPECT_EQ(registers[1], 0x0102);

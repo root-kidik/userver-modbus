@@ -10,7 +10,6 @@ UTEST(ResponseReadHoldingRegistersTest, CreateSuccess) {
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 4);
     EXPECT_EQ(response->GetValues().size(), 2);
-    EXPECT_EQ(response->GetRegisters().size(), 2);
 }
 
 UTEST(ResponseReadHoldingRegistersTest, CreateMinQuantity) {
@@ -61,7 +60,7 @@ UTEST(ResponseReadHoldingRegistersTest, DeserializeSuccess) {
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 4);
 
-    const auto registers = response->GetRegisters();
+    const auto registers = response->GetValues();
     ASSERT_EQ(registers.size(), 2);
     EXPECT_EQ(registers[0], 0x022B);
     EXPECT_EQ(registers[1], 0x0000);

@@ -158,18 +158,6 @@ public:
         return std::span<const T>{values_.data(), quantity_};
     }
 
-    [[nodiscard]] std::span<const T> GetCoils() const noexcept
-    requires std::is_same_v<T, Coil>
-    {
-        return GetValues();
-    }
-
-    [[nodiscard]] std::span<const T> GetRegisters() const noexcept
-    requires std::is_same_v<T, std::uint16_t>
-    {
-        return GetValues();
-    }
-
 private:
     WriteMultiple(std::uint16_t address, std::span<const T> values) noexcept
         : address_{address}, quantity_{static_cast<std::uint16_t>(values.size())} {

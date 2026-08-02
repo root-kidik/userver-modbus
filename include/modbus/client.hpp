@@ -1,39 +1,76 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
-#include <vector>
+
+#include <userver/utils/expected.hpp>
 
 #include <modbus/coil.hpp>
 #include <modbus/discrete_input.hpp>
 
 namespace modbus {
 
+enum class ClientError : std::uint8_t {
+    kBufferTooSmall,
+    kInvalidRequest,
+    kInvalidResponse,
+    kTransportError,
+    kTimeout,
+    kModbusException
+};
+
 class Client {
 public:
     virtual ~Client() = default;
 
-    virtual std::uint8_t GetSlaveId() const noexcept = 0;
+    [[nodiscard]] virtual std::uint8_t GetSlaveId() const noexcept = 0;
 
-    virtual Coil ReadCoil(std::uint16_t address) = 0;
-    virtual std::vector<Coil> ReadCoils(std::uint16_t address, std::uint16_t quantity) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadCoils(
+        std::uint16_t address,
+        std::uint16_t quantity,
+        std::span<Coil> out_coils
+    ) = 0;
 
-    virtual DiscreteInput ReadDiscreteInput(std::uint16_t address) = 0;
-    virtual std::vector<DiscreteInput> ReadDiscreteInputs(std::uint16_t address, std::uint16_t quantity) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadDiscreteInputs(
+        std::uint16_t address,
+        std::uint16_t quantity,
+        std::span<DiscreteInput> out_inputs
+    ) = 0;
 
-    virtual std::uint16_t ReadHoldingRegister(std::uint16_t address) = 0;
-    virtual std::vector<std::uint16_t> ReadHoldingRegisters(std::uint16_t address, std::uint16_t quantity) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadHoldingRegisters(
+        std::uint16_t address,
+        std::uint16_t quantity,
+        std::span<std::uint16_t> out_registers
+    ) = 0;
 
-    virtual std::uint16_t ReadInputRegister(std::uint16_t address) = 0;
-    virtual std::vector<std::uint16_t> ReadInputRegisters(std::uint16_t address, std::uint16_t quantity) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> ReadInputRegisters(
+        std::uint16_t address,
+        std::uint16_t quantity,
+        std::span<std::uint16_t> out_registers
+    ) = 0;
 
-    virtual void WriteCoil(std::uint16_t address, Coil value) = 0;
-    virtual void WriteCoils(std::uint16_t address, std::span<Coil> values) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteCoil(std::uint16_t address, Coil value) = 0;
 
-    virtual void WriteHoldingRegister(std::uint16_t address, std::uint16_t value) = 0;
-    virtual void WriteHoldingRegisters(std::uint16_t address, std::span<std::uint16_t> values) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteCoils(
+        std::uint16_t address,
+        std::span<const Coil> values
+    ) = 0;
 
-    virtual std::vector<std::byte> SendRawRequest(std::span<std::byte> pdu) = 0;
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteHoldingRegister(
+        std::uint16_t address,
+        std::uint16_t value
+    ) = 0;
+
+    [[nodiscard]] virtual userver::utils::expected<void, ClientError> WriteHoldingRegisters(
+        std::uint16_t address,
+        std::span<const std::uint16_t> values
+    ) = 0;
+
+    [[nodiscard]] virtual userver::utils::expected<std::size_t, ClientError> SendRawRequest(
+        std::span<const std::byte> request_pdu,
+        std::span<std::byte> response_pdu_out
+    ) = 0;
 };
 
 }  // namespace modbus

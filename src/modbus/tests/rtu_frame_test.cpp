@@ -87,8 +87,7 @@ UTEST(RtuFrameTest, DeserializeFailsBufferTooShort) {
 }
 
 UTEST(RtuFrameTest, DeserializeFailsPduTooLarge) {
-    const auto buffer = std::vector<
-        std::byte>(modbus::RtuFrame::kMinFrameSize + modbus::kMaxPduSize + 1, std::byte{0});
+    const auto buffer = std::vector<std::byte>(modbus::RtuFrame::kMinFrameSize + modbus::kMaxPduSize + 1, std::byte{0});
 
     auto it = buffer.cbegin();
     const auto frame_result = modbus::RtuFrame::Deserialize(it, buffer.cend());

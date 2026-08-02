@@ -169,12 +169,6 @@ public:
         return std::span<const T>{values_.data(), quantity_};
     }
 
-    [[nodiscard]] constexpr std::span<const T> GetRegisters() const noexcept
-    requires std::is_same_v<T, std::uint16_t>
-    {
-        return GetValues();
-    }
-
 private:
     ReadMultiple(std::span<const T> values) noexcept : quantity_{static_cast<std::uint16_t>(values.size())} {
         std::copy(values.begin(), values.end(), values_.begin());

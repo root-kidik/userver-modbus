@@ -23,7 +23,6 @@ UTEST(RequestWriteMultipleCoilsTest, CreateSuccess) {
     EXPECT_EQ(request->GetQuantity(), 10);
     EXPECT_EQ(request->GetByteCount(), 2);
     EXPECT_EQ(request->GetValues().size(), 10);
-    EXPECT_EQ(request->GetCoils().size(), 10);
 }
 
 UTEST(RequestWriteMultipleCoilsTest, CreateMinQuantity) {
@@ -101,7 +100,7 @@ UTEST(RequestWriteMultipleCoilsTest, DeserializeSuccess) {
     EXPECT_EQ(request->GetQuantity(), 10);
     EXPECT_EQ(request->GetByteCount(), 2);
 
-    const auto coils = request->GetCoils();
+    const auto coils = request->GetValues();
     ASSERT_EQ(coils.size(), 10);
     EXPECT_EQ(coils[0], modbus::Coil::kOn);
     EXPECT_EQ(coils[1], modbus::Coil::kOff);

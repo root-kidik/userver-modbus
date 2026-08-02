@@ -22,9 +22,20 @@ constexpr std::uint8_t ToUint8(T val) noexcept {
     }
 }
 
-template <typename OutputIt, typename T = std::uint8_t>
-concept NothrowWritableIterator = requires(OutputIt it, T val) {
-    requires noexcept(*it = val);
+template <typename OutputIt>
+constexpr void WriteByteToIterator(OutputIt it, std::uint8_t val) noexcept {
+    if constexpr (requires { *it = val; }) {
+        *it = val;
+    } else if constexpr (requires { *it = static_cast<std::byte>(val); }) {
+        *it = static_cast<std::byte>(val);
+    } else {
+        *it = static_cast<std::remove_cvref_t<decltype(*it)>>(val);
+    }
+}
+
+template <typename OutputIt>
+concept NothrowWritableIterator = requires(OutputIt it, std::uint8_t val) {
+    requires noexcept(detail::WriteByteToIterator(it, val));
     requires noexcept(++it);
 };
 
@@ -32,7 +43,7 @@ concept NothrowWritableIterator = requires(OutputIt it, T val) {
 
 template <typename OutputIt>
 [[nodiscard]] OutputIt WriteBe(OutputIt out, std::uint8_t value) noexcept(detail::NothrowWritableIterator<OutputIt>) {
-    *out = static_cast<std::uint8_t>(value);
+    detail::WriteByteToIterator(out, value);
     ++out;
     return out;
 }
