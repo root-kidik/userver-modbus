@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <span>
 
 #include <modbus/exception_code.hpp>
 #include <modbus/function_code.hpp>
@@ -13,6 +15,8 @@ namespace modbus::response {
 
 class ErrorResponse {
 public:
+    static constexpr std::size_t kEncodedSize = 2;
+
     static userver::utils::expected<ErrorResponse, ParseError> Create(
         FunctionCode function_code,
         ExceptionCode exception_code
@@ -20,39 +24,37 @@ public:
         return ErrorResponse{function_code, exception_code};
     }
 
-    template <typename InputIt>
-    static userver::utils::expected<ErrorResponse, ParseError> Deserialize(InputIt& first, InputIt last) noexcept {
-        const auto raw_fc = ReadBe<std::uint8_t>(first, last);
-        if (!raw_fc) {
-            return userver::utils::unexpected{raw_fc.error()};
+    static userver::utils::expected<ErrorResponse, ParseError> Deserialize(std::span<const std::byte>& buffer
+    ) noexcept {
+        if (buffer.size() < kEncodedSize) {
+            return userver::utils::unexpected{ParseError::kBufferTooShort};
         }
 
-        if (!IsErrorFunctionCode(*raw_fc)) {
+        const auto raw_fc = static_cast<std::uint8_t>(buffer[0]);
+        if (!IsErrorFunctionCode(raw_fc)) {
             return userver::utils::unexpected{ParseError::kInvalidFunctionCode};
         }
 
-        const auto raw_ec = ReadBe<std::uint8_t>(first, last);
-        if (!raw_ec) {
-            return userver::utils::unexpected{raw_ec.error()};
-        }
-
-        if (!IsValidExceptionCode(*raw_ec)) {
+        const auto raw_ec = static_cast<std::uint8_t>(buffer[1]);
+        if (!IsValidExceptionCode(raw_ec)) {
             return userver::utils::unexpected{ParseError::kInvalidExceptionCode};
         }
 
-        if (first != last) {
-            return userver::utils::unexpected{ParseError::kExtraDataAtEnd};
-        }
+        buffer = buffer.subspan(kEncodedSize);
 
-        return Create(static_cast<FunctionCode>(ToNormalFunctionCode(*raw_fc)), static_cast<ExceptionCode>(*raw_ec));
+        return Create(static_cast<FunctionCode>(ToNormalFunctionCode(raw_fc)), static_cast<ExceptionCode>(raw_ec));
     }
 
-    template <typename OutputIt>
-    [[nodiscard]] OutputIt Serialize(OutputIt out
-    ) const noexcept(noexcept(WriteBe(out, ToErrorFunctionCode(function_code_)))) {
-        out = WriteBe(out, ToErrorFunctionCode(function_code_));
-        out = WriteBe(out, static_cast<std::uint8_t>(exception_code_));
-        return out;
+    [[nodiscard]] userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out
+    ) const noexcept {
+        if (out.size() < kEncodedSize) {
+            return userver::utils::unexpected{ParseError::kBufferTooShort};
+        }
+
+        out[0] = static_cast<std::byte>(ToErrorFunctionCode(function_code_));
+        out[1] = static_cast<std::byte>(exception_code_);
+
+        return out.subspan(kEncodedSize);
     }
 
     [[nodiscard]] FunctionCode GetFunctionCode() const noexcept { return function_code_; }
@@ -60,7 +62,7 @@ public:
     [[nodiscard]] ExceptionCode GetExceptionCode() const noexcept { return exception_code_; }
 
 private:
-    constexpr ErrorResponse(FunctionCode function_code, ExceptionCode exception_code) noexcept
+    ErrorResponse(FunctionCode function_code, ExceptionCode exception_code) noexcept
         : function_code_{function_code}, exception_code_{exception_code} {}
 
     FunctionCode function_code_;

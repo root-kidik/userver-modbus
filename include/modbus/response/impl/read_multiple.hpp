@@ -35,13 +35,11 @@ public:
         return ReadMultiple{values};
     }
 
-    template <typename InputIt>
     static userver::utils::expected<ReadMultiple, ParseError> Deserialize(
-        InputIt& first,
-        InputIt last,
+        std::span<const std::byte>& buffer,
         std::uint16_t expected_quantity
-    ) {
-        const auto function_code = ReadBe<std::uint8_t>(first, last);
+    ) noexcept {
+        const auto function_code = ReadBe<std::uint8_t>(buffer);
         if (!function_code) {
             return userver::utils::unexpected{function_code.error()};
         }
@@ -50,7 +48,7 @@ public:
             return userver::utils::unexpected{ParseError::kInvalidFunctionCode};
         }
 
-        const auto byte_count = ReadBe<std::uint8_t>(first, last);
+        const auto byte_count = ReadBe<std::uint8_t>(buffer);
         if (!byte_count) {
             return userver::utils::unexpected{byte_count.error()};
         }
@@ -70,7 +68,7 @@ public:
 
             std::uint16_t bits_read = 0;
             for (std::size_t i = 0; i < *byte_count; ++i) {
-                const auto current_byte = ReadBe<std::uint8_t>(first, last);
+                const auto current_byte = ReadBe<std::uint8_t>(buffer);
                 if (!current_byte) {
                     return userver::utils::unexpected{current_byte.error()};
                 }
@@ -96,7 +94,7 @@ public:
             }
 
             for (std::size_t i = 0; i < register_count; ++i) {
-                const auto reg = ReadBe<std::uint16_t>(first, last);
+                const auto reg = ReadBe<std::uint16_t>(buffer);
                 if (!reg) {
                     return userver::utils::unexpected{reg.error()};
                 }
@@ -105,18 +103,17 @@ public:
             actual_quantity = register_count;
         }
 
-        if (first != last) {
-            return userver::utils::unexpected{ParseError::kExtraDataAtEnd};
-        }
-
         return Create(std::span<const T>{parsed_values.data(), actual_quantity});
     }
 
-    template <typename OutputIt>
-    [[nodiscard]] OutputIt Serialize(OutputIt out
-    ) const noexcept(noexcept(WriteBe(out, static_cast<std::uint8_t>(kFunctionCode)))) {
-        out = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
-        out = WriteBe(out, GetByteCount());
+    userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out) const noexcept {
+        const std::size_t required_size = GetEncodedSize();
+        if (out.size() < required_size) {
+            return userver::utils::unexpected{ParseError::kBufferTooShort};
+        }
+
+        std::ignore = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
+        std::ignore = WriteBe(out, GetByteCount());
 
         if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             std::uint8_t current_byte = 0;
@@ -128,7 +125,7 @@ public:
                 if constexpr (std::is_same_v<T, Coil>) {
                     is_set = (val == Coil::kOn);
                 } else {
-                    is_set = static_cast<bool>(val);
+                    is_set = (val == DiscreteInput::kOn);
                 }
 
                 if (is_set) {
@@ -137,18 +134,18 @@ public:
 
                 ++bit_index;
                 if (bit_index == 8) {
-                    out = WriteBe(out, current_byte);
+                    std::ignore = WriteBe(out, current_byte);
                     current_byte = 0;
                     bit_index = 0;
                 }
             }
 
             if (bit_index > 0) {
-                out = WriteBe(out, current_byte);
+                std::ignore = WriteBe(out, current_byte);
             }
         } else {
             for (std::size_t i = 0; i < quantity_; ++i) {
-                out = WriteBe(out, values_[i]);
+                std::ignore = WriteBe(out, values_[i]);
             }
         }
 
@@ -163,6 +160,8 @@ public:
         }
     }
 
+    [[nodiscard]] constexpr std::size_t GetEncodedSize() const noexcept { return 2 + GetByteCount(); }
+
     [[nodiscard]] constexpr std::uint16_t GetQuantity() const noexcept { return quantity_; }
 
     [[nodiscard]] constexpr std::span<const T> GetValues() const noexcept {
@@ -175,6 +174,7 @@ private:
     }
 
     std::uint16_t quantity_;
+
     std::array<T, MaxQty> values_;
 };
 

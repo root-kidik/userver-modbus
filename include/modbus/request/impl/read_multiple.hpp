@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <span>
 
 #include <modbus/function_code.hpp>
+#include <modbus/parse_error.hpp>
 #include <modbus/utils.hpp>
 
 #include <userver/utils/expected.hpp>
@@ -17,6 +20,8 @@ public:
 
     static constexpr FunctionCode kFunctionCode{Code};
 
+    static constexpr std::size_t kEncodedSize = 5;
+
     static userver::utils::expected<ReadMultiple, ParseError> Create(std::uint16_t address, std::uint16_t quantity)
         noexcept {
         if (quantity < kMinQuantity || quantity > kMaxQuantity) {
@@ -30,9 +35,8 @@ public:
         return ReadMultiple{address, quantity};
     }
 
-    template <typename InputIt>
-    static userver::utils::expected<ReadMultiple, ParseError> Deserialize(InputIt& first, InputIt last) noexcept {
-        const auto function_code = ReadBe<std::uint8_t>(first, last);
+    static userver::utils::expected<ReadMultiple, ParseError> Deserialize(std::span<const std::byte>& buffer) noexcept {
+        const auto function_code = ReadBe<std::uint8_t>(buffer);
         if (!function_code) {
             return userver::utils::unexpected{function_code.error()};
         }
@@ -41,29 +45,29 @@ public:
             return userver::utils::unexpected{ParseError::kInvalidFunctionCode};
         }
 
-        const auto address = ReadBe<std::uint16_t>(first, last);
+        const auto address = ReadBe<std::uint16_t>(buffer);
         if (!address) {
             return userver::utils::unexpected{address.error()};
         }
 
-        const auto quantity = ReadBe<std::uint16_t>(first, last);
+        const auto quantity = ReadBe<std::uint16_t>(buffer);
         if (!quantity) {
             return userver::utils::unexpected{quantity.error()};
-        }
-
-        if (first != last) {
-            return userver::utils::unexpected{ParseError::kExtraDataAtEnd};
         }
 
         return Create(*address, *quantity);
     }
 
-    template <typename OutputIt>
-    [[nodiscard]] OutputIt Serialize(OutputIt out
-    ) const noexcept(noexcept(WriteBe(out, static_cast<std::uint8_t>(kFunctionCode)))) {
-        out = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
-        out = WriteBe(out, address_);
-        out = WriteBe(out, quantity_);
+    [[nodiscard]] userver::utils::expected<std::span<std::byte>, ParseError> Serialize(std::span<std::byte> out
+    ) const noexcept {
+        if (out.size() < kEncodedSize) {
+            return userver::utils::unexpected{ParseError::kBufferTooShort};
+        }
+
+        std::ignore = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
+        std::ignore = WriteBe(out, address_);
+        std::ignore = WriteBe(out, quantity_);
+
         return out;
     }
 
@@ -72,7 +76,8 @@ public:
     [[nodiscard]] std::uint16_t GetQuantity() const noexcept { return quantity_; }
 
 private:
-    ReadMultiple(std::uint16_t address, std::uint16_t quantity) noexcept : address_{address}, quantity_{quantity} {}
+    constexpr ReadMultiple(std::uint16_t address, std::uint16_t quantity) noexcept
+        : address_{address}, quantity_{quantity} {}
 
     std::uint16_t address_;
     std::uint16_t quantity_;
