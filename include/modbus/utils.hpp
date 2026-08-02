@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <type_traits>
 
-#include <userver/utils/expected.hpp>
-
 #include <modbus/parse_error.hpp>
+
+#include <userver/utils/expected.hpp>
 
 namespace modbus {
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+
 #include <modbus/response/impl/write_single.hpp>
 
 namespace modbus::response {

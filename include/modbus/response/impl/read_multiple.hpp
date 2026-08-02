@@ -8,11 +8,11 @@
 #include <vector>
 
 #include <modbus/coil.hpp>
+#include <modbus/discrete_input.hpp>
 #include <modbus/function_code.hpp>
 #include <modbus/parse_error.hpp>
 #include <modbus/utils.hpp>
 
-#include <modbus/discrete_input.hpp>
 #include <userver/utils/expected.hpp>
 
 namespace modbus::response::impl {
