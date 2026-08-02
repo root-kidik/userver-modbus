@@ -4,6 +4,6 @@
 
 namespace modbus::response {
 
-using ReadInputRegisters = impl::ReadMultiple<std::uint16_t, FunctionCode::kReadInputRegisters, 125, 1>;
+using ReadInputRegisters = impl::ReadMultiple<std::uint16_t, FunctionCode::kReadInputRegisters, 125>;
 
 }  // namespace modbus::response
