@@ -12,6 +12,7 @@
 #include <modbus/parse_error.hpp>
 #include <modbus/utils.hpp>
 
+#include <modbus/discrete_input.hpp>
 #include <userver/utils/expected.hpp>
 
 namespace modbus::response::impl {
@@ -26,14 +27,21 @@ public:
 
     static userver::utils::expected<ReadMultiple, ParseError> Create(std::vector<T> values) {
         const auto quantity = values.size();
+
         if (quantity < kMinQuantity || quantity > kMaxQuantity) {
             return userver::utils::unexpected{ParseError::kInvalidQuantity};
         }
 
-        if constexpr (std::is_same_v<T, Coil>) {
+        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             for (const auto val : values) {
-                if (val != Coil::kOn && val != Coil::kOff) {
-                    return userver::utils::unexpected{ParseError::kInvalidValue};
+                if constexpr (std::is_same_v<T, Coil>) {
+                    if (val != Coil::kOn && val != Coil::kOff) {
+                        return userver::utils::unexpected{ParseError::kInvalidValue};
+                    }
+                } else {
+                    if (val != DiscreteInput::kOn && val != DiscreteInput::kOff) {
+                        return userver::utils::unexpected{ParseError::kInvalidValue};
+                    }
                 }
             }
         }
@@ -63,7 +71,7 @@ public:
 
         std::vector<T> values;
 
-        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             if (expected_quantity < kMinQuantity || expected_quantity > kMaxQuantity) {
                 return userver::utils::unexpected{ParseError::kInvalidQuantity};
             }
@@ -87,7 +95,7 @@ public:
                     if constexpr (std::is_same_v<T, Coil>) {
                         values.push_back(is_set ? Coil::kOn : Coil::kOff);
                     } else {
-                        values.push_back(is_set);
+                        values.push_back(is_set ? DiscreteInput::kOn : DiscreteInput::kOff);
                     }
                 }
             }
@@ -125,7 +133,7 @@ public:
         out = WriteBe(out, static_cast<std::uint8_t>(kFunctionCode));
         out = WriteBe(out, GetByteCount());
 
-        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             std::uint8_t current_byte = 0;
             std::uint8_t bit_index = 0;
 
@@ -162,7 +170,7 @@ public:
     }
 
     [[nodiscard]] std::uint8_t GetByteCount() const noexcept {
-        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<T, Coil> || std::is_same_v<T, DiscreteInput>) {
             return static_cast<std::uint8_t>(BitsToBytes(values_.size()));
         } else {
             return static_cast<std::uint8_t>(values_.size() * sizeof(T));

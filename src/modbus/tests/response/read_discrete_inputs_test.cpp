@@ -5,7 +5,8 @@
 #include <modbus/response/read_discrete_inputs.hpp>
 
 UTEST(ResponseReadDiscreteInputsTest, CreateSuccess) {
-    const std::vector<bool> inputs{true, false, true};
+    const std::vector<modbus::DiscreteInput>
+        inputs{modbus::DiscreteInput::kOn, modbus::DiscreteInput::kOff, modbus::DiscreteInput::kOn};
     const auto response = modbus::response::ReadDiscreteInputs::Create(inputs);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetByteCount(), 1);
@@ -13,35 +14,45 @@ UTEST(ResponseReadDiscreteInputsTest, CreateSuccess) {
 }
 
 UTEST(ResponseReadDiscreteInputsTest, CreateMinQuantity) {
-    const std::vector<bool> inputs{true};
+    const std::vector<modbus::DiscreteInput> inputs{modbus::DiscreteInput::kOn};
     const auto response = modbus::response::ReadDiscreteInputs::Create(inputs);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetValues().size(), 1);
 }
 
 UTEST(ResponseReadDiscreteInputsTest, CreateMaxQuantity) {
-    const std::vector<bool> inputs(2000, true);
+    const std::vector<modbus::DiscreteInput> inputs(2000, modbus::DiscreteInput::kOn);
     const auto response = modbus::response::ReadDiscreteInputs::Create(inputs);
     ASSERT_TRUE(response.has_value());
     EXPECT_EQ(response->GetValues().size(), 2000);
 }
 
 UTEST(ResponseReadDiscreteInputsTest, CreateInvalidQuantityZero) {
-    const std::vector<bool> inputs{};
+    const std::vector<modbus::DiscreteInput> inputs{};
     const auto response = modbus::response::ReadDiscreteInputs::Create(inputs);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(ResponseReadDiscreteInputsTest, CreateInvalidQuantityOverflow) {
-    const std::vector<bool> inputs(2001, true);
+    const std::vector<modbus::DiscreteInput> inputs(2001, modbus::DiscreteInput::kOn);
     const auto response = modbus::response::ReadDiscreteInputs::Create(inputs);
     ASSERT_FALSE(response.has_value());
     EXPECT_EQ(response.error(), modbus::ParseError::kInvalidQuantity);
 }
 
 UTEST(ResponseReadDiscreteInputsTest, Serialize) {
-    const std::vector<bool> inputs{true, false, true, false, false, true, true, false, true};
+    const std::vector<modbus::DiscreteInput> inputs{
+        modbus::DiscreteInput::kOn,
+        modbus::DiscreteInput::kOff,
+        modbus::DiscreteInput::kOn,
+        modbus::DiscreteInput::kOff,
+        modbus::DiscreteInput::kOff,
+        modbus::DiscreteInput::kOn,
+        modbus::DiscreteInput::kOn,
+        modbus::DiscreteInput::kOff,
+        modbus::DiscreteInput::kOn
+    };
     const auto response = modbus::response::ReadDiscreteInputs::Create(inputs);
     ASSERT_TRUE(response.has_value());
 
@@ -62,15 +73,15 @@ UTEST(ResponseReadDiscreteInputsTest, DeserializeSuccess) {
 
     const auto values = response->GetValues();
     ASSERT_EQ(values.size(), 9);
-    EXPECT_TRUE(values[0]);
-    EXPECT_FALSE(values[1]);
-    EXPECT_TRUE(values[2]);
-    EXPECT_FALSE(values[3]);
-    EXPECT_FALSE(values[4]);
-    EXPECT_TRUE(values[5]);
-    EXPECT_TRUE(values[6]);
-    EXPECT_FALSE(values[7]);
-    EXPECT_TRUE(values[8]);
+    EXPECT_EQ(values[0], modbus::DiscreteInput::kOn);
+    EXPECT_EQ(values[1], modbus::DiscreteInput::kOff);
+    EXPECT_EQ(values[2], modbus::DiscreteInput::kOn);
+    EXPECT_EQ(values[3], modbus::DiscreteInput::kOff);
+    EXPECT_EQ(values[4], modbus::DiscreteInput::kOff);
+    EXPECT_EQ(values[5], modbus::DiscreteInput::kOn);
+    EXPECT_EQ(values[6], modbus::DiscreteInput::kOn);
+    EXPECT_EQ(values[7], modbus::DiscreteInput::kOff);
+    EXPECT_EQ(values[8], modbus::DiscreteInput::kOn);
     EXPECT_EQ(it, buffer.cend());
 }
 

@@ -49,8 +49,14 @@ UTEST(ResponseReadCoilsTest, CreateInvalidValue) {
 
 UTEST(ResponseReadCoilsTest, Serialize) {
     const std::vector<modbus::Coil> coils{
-        modbus::Coil::kOn, modbus::Coil::kOff, modbus::Coil::kOn, modbus::Coil::kOff,
-        modbus::Coil::kOff, modbus::Coil::kOn, modbus::Coil::kOn, modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
         modbus::Coil::kOn
     };
     const auto response = modbus::response::ReadCoils::Create(coils);

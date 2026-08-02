@@ -6,9 +6,16 @@
 
 UTEST(RequestWriteMultipleCoilsTest, CreateSuccess) {
     const std::vector<modbus::Coil> coils{
-        modbus::Coil::kOn, modbus::Coil::kOff, modbus::Coil::kOn, modbus::Coil::kOff,
-        modbus::Coil::kOff, modbus::Coil::kOn, modbus::Coil::kOn, modbus::Coil::kOff,
-        modbus::Coil::kOn, modbus::Coil::kOff
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff
     };
     const auto request = modbus::request::WriteMultipleCoils::Create(0x0013, coils);
     ASSERT_TRUE(request.has_value());
@@ -63,9 +70,16 @@ UTEST(RequestWriteMultipleCoilsTest, CreateInvalidValue) {
 
 UTEST(RequestWriteMultipleCoilsTest, Serialize) {
     const std::vector<modbus::Coil> coils{
-        modbus::Coil::kOn, modbus::Coil::kOff, modbus::Coil::kOn, modbus::Coil::kOff,
-        modbus::Coil::kOff, modbus::Coil::kOn, modbus::Coil::kOn, modbus::Coil::kOff,
-        modbus::Coil::kOn, modbus::Coil::kOff
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff,
+        modbus::Coil::kOn,
+        modbus::Coil::kOff
     };
     const auto request = modbus::request::WriteMultipleCoils::Create(0x0013, coils);
     ASSERT_TRUE(request.has_value());
