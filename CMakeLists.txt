@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.14...4.0)
 
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 project(userver-modbus CXX)
 
 find_package(userver COMPONENTS core REQUIRED)
