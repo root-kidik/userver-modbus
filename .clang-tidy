@@ -30,6 +30,7 @@ Checks:
   ,-cert-msc32-c
   ,-clang-analyzer-core.uninitialized.Assign
   ,-clang-analyzer-optin.cplusplus.VirtualCall
+  ,-cppcoreguidelines-pro-type-member-init
   ,-cppcoreguidelines-avoid-c-arrays
   ,-cppcoreguidelines-avoid-const-or-ref-data-members
   ,-cppcoreguidelines-avoid-do-while

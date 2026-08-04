@@ -1,9 +1,11 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 
+#include <userver/engine/io/sockaddr.hpp>
 #include <userver/utils/expected.hpp>
 
 #include <modbus/coil.hpp>
@@ -72,5 +74,11 @@ public:
         std::span<std::byte> response_pdu_out
     ) = 0;
 };
+
+std::unique_ptr<Client> MakeUdpClient(
+    std::uint8_t slave_id,
+    userver::engine::io::Sockaddr endpoint,
+    std::chrono::milliseconds timeout
+);
 
 }  // namespace modbus

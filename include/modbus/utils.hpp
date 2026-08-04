@@ -7,9 +7,9 @@
 
 #include <boost/endian/conversion.hpp>
 
-#include <modbus/parse_error.hpp>
-
 #include <userver/utils/expected.hpp>
+
+#include <modbus/parse_error.hpp>
 
 namespace modbus {
 
