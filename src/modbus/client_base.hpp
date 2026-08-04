@@ -8,7 +8,7 @@ class ClientBase : public Client {
 public:
     ClientBase(std::uint8_t slave_id);
 
-    std::uint8_t GetSlaveId() const noexcept override;
+    [[nodiscard]] std::uint8_t GetSlaveId() const noexcept override;
 
     userver::utils::expected<void, ClientError> ReadCoils(
         std::uint16_t address,

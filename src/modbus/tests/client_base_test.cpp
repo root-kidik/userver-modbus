@@ -1,5 +1,3 @@
-#include <modbus/client_base.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -7,6 +5,8 @@
 #include <vector>
 
 #include <userver/utest/utest.hpp>
+
+#include <modbus/client_base.hpp>
 
 namespace {
 
