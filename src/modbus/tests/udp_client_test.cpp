@@ -20,13 +20,15 @@ struct UdpServer {
 };
 
 struct UdpClientTest : testing::Test {
-    UdpClientTest() : client{slave_id, server.socket.Getsockname(), timeout} {}
+    UdpClientTest() : client{slave_id, metrics, server.socket.Getsockname(), timeout} {}
 
     std::uint8_t slave_id{1};
 
     std::chrono::milliseconds timeout{200};
 
     UdpServer server;
+
+    modbus::ClientMetrics metrics;
     modbus::UdpClient client;
 };
 

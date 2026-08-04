@@ -7,12 +7,14 @@
 #include <userver/utest/utest.hpp>
 
 #include <modbus/client_base.hpp>
+#include <modbus/client_metrics.hpp>
 
 namespace {
 
 class FakeModbusClient final : public modbus::ClientBase {
 public:
-    explicit FakeModbusClient(std::uint8_t slave_id = 1) : modbus::ClientBase(slave_id) {}
+    explicit FakeModbusClient(modbus::ClientMetrics& metrics, std::uint8_t slave_id = 1)
+        : modbus::ClientBase(slave_id, metrics) {}
 
     void SetResponse(userver::utils::expected<std::vector<std::byte>, modbus::ClientError> response) {
         response_ = std::move(response);
@@ -45,7 +47,12 @@ private:
 };
 
 struct ClientBaseTest : testing::Test {
-    FakeModbusClient client{1};
+    modbus::ClientMetrics metrics{};
+    FakeModbusClient client{metrics, 1};
+
+    const modbus::MessageMetrics& GetMsgMetrics(modbus::MessageType type) const {
+        return metrics.by_message_type[static_cast<std::size_t>(type)];
+    }
 };
 
 }  // namespace
@@ -65,6 +72,18 @@ UTEST_F(ClientBaseTest, ReadCoilsSuccess) {
     const std::array<std::byte, 5>
         expected_pdu{std::byte{0x01}, std::byte{0x00}, std::byte{0x10}, std::byte{0x00}, std::byte{0x03}};
     EXPECT_TRUE(std::ranges::equal(client.GetLastSentPdu(), expected_pdu));
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+    EXPECT_EQ(metrics.requests_errors.Load().value, 0);
+
+    EXPECT_EQ(metrics.bytes_sent.Load().value, expected_pdu.size());
+    EXPECT_EQ(metrics.bytes_received.Load().value, response_data.size());
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadCoils);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
+    EXPECT_EQ(msg_m.errors.Load().value, 0);
 }
 
 UTEST_F(ClientBaseTest, ReadDiscreteInputsSuccess) {
@@ -77,6 +96,13 @@ UTEST_F(ClientBaseTest, ReadDiscreteInputsSuccess) {
     ASSERT_TRUE(res.has_value());
     EXPECT_EQ(inputs[0], modbus::DiscreteInput::kOff);
     EXPECT_EQ(inputs[1], modbus::DiscreteInput::kOn);
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadDiscreteInputs);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, ReadHoldingRegistersSuccess) {
@@ -100,6 +126,13 @@ UTEST_F(ClientBaseTest, ReadHoldingRegistersSuccess) {
     const std::array<std::byte, 5>
         expected_pdu{std::byte{0x03}, std::byte{0x00}, std::byte{0x6B}, std::byte{0x00}, std::byte{0x02}};
     EXPECT_TRUE(std::ranges::equal(client.GetLastSentPdu(), expected_pdu));
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadHoldingRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, ReadInputRegistersSuccess) {
@@ -111,6 +144,13 @@ UTEST_F(ClientBaseTest, ReadInputRegistersSuccess) {
 
     ASSERT_TRUE(res.has_value());
     EXPECT_EQ(registers[0], 42);
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadInputRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, ReadBufferTooSmallError) {
@@ -119,6 +159,17 @@ UTEST_F(ClientBaseTest, ReadBufferTooSmallError) {
 
     ASSERT_FALSE(res.has_value());
     EXPECT_EQ(res.error(), modbus::ClientError::kBufferTooSmall);
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 0);
+    EXPECT_EQ(metrics.requests_errors.Load().value, 1);
+
+    EXPECT_EQ(metrics.bytes_sent.Load().value, 0);
+    EXPECT_EQ(metrics.bytes_received.Load().value, 0);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadHoldingRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.errors.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, WriteCoilSuccess) {
@@ -130,6 +181,13 @@ UTEST_F(ClientBaseTest, WriteCoilSuccess) {
 
     ASSERT_TRUE(res.has_value());
     EXPECT_TRUE(std::ranges::equal(client.GetLastSentPdu(), response_data));
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kWriteSingleCoil);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, WriteHoldingRegisterSuccess) {
@@ -141,6 +199,13 @@ UTEST_F(ClientBaseTest, WriteHoldingRegisterSuccess) {
 
     ASSERT_TRUE(res.has_value());
     EXPECT_TRUE(std::ranges::equal(client.GetLastSentPdu(), response_data));
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kWriteSingleRegister);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, WriteCoilsSuccess) {
@@ -163,6 +228,13 @@ UTEST_F(ClientBaseTest, WriteCoilsSuccess) {
         std::byte{0x01}
     };
     EXPECT_TRUE(std::ranges::equal(client.GetLastSentPdu(), expected_pdu));
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kWriteMultipleCoils);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, WriteHoldingRegistersSuccess) {
@@ -188,6 +260,13 @@ UTEST_F(ClientBaseTest, WriteHoldingRegistersSuccess) {
         std::byte{0x02}
     };
     EXPECT_TRUE(std::ranges::equal(client.GetLastSentPdu(), expected_pdu));
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_success.Load().value, 1);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kWriteMultipleRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.success.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, InvalidRequestQuantityZero) {
@@ -196,6 +275,14 @@ UTEST_F(ClientBaseTest, InvalidRequestQuantityZero) {
 
     ASSERT_FALSE(res.has_value());
     EXPECT_EQ(res.error(), modbus::ClientError::kInvalidRequest);
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_errors.Load().value, 1);
+    EXPECT_EQ(metrics.bytes_sent.Load().value, 0);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadHoldingRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.errors.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, TransportErrorPropagation) {
@@ -206,6 +293,15 @@ UTEST_F(ClientBaseTest, TransportErrorPropagation) {
 
     ASSERT_FALSE(res.has_value());
     EXPECT_EQ(res.error(), modbus::ClientError::kTimeout);
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_errors.Load().value, 1);
+    EXPECT_EQ(metrics.bytes_sent.Load().value, 5);
+    EXPECT_EQ(metrics.bytes_received.Load().value, 0);
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadHoldingRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.errors.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, InvalidResponseDeserializationFailed) {
@@ -217,6 +313,15 @@ UTEST_F(ClientBaseTest, InvalidResponseDeserializationFailed) {
 
     ASSERT_FALSE(res.has_value());
     EXPECT_EQ(res.error(), modbus::ClientError::kInvalidResponse);
+
+    EXPECT_EQ(metrics.requests_total.Load().value, 1);
+    EXPECT_EQ(metrics.requests_errors.Load().value, 1);
+    EXPECT_EQ(metrics.bytes_sent.Load().value, 5);
+    EXPECT_EQ(metrics.bytes_received.Load().value, response_data.size());
+
+    const auto& msg_m = GetMsgMetrics(modbus::MessageType::kReadHoldingRegisters);
+    EXPECT_EQ(msg_m.total.Load().value, 1);
+    EXPECT_EQ(msg_m.errors.Load().value, 1);
 }
 
 UTEST_F(ClientBaseTest, GetSlaveIdReturnsCorrectValue) { EXPECT_EQ(client.GetSlaveId(), 1); }
