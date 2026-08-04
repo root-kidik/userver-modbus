@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <span>
 
+#include <modbus/constants.hpp>
+
 #include <modbus/request/read_coils.hpp>
 #include <modbus/request/read_discrete_inputs.hpp>
 #include <modbus/request/read_holding_registers.hpp>
@@ -26,8 +28,6 @@
 namespace modbus {
 
 namespace {
-
-constexpr std::size_t kMaxPduSize = 253;
 
 template <typename Request>
 userver::utils::expected<std::size_t, ClientError> SendPdu(
