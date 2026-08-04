@@ -8,7 +8,12 @@ namespace modbus {
 
 class UdpClient final : public ClientBase {
 public:
-    UdpClient(std::uint8_t slave_id, userver::engine::io::Sockaddr endpoint, std::chrono::milliseconds timeout);
+    UdpClient(
+        std::uint8_t slave_id,
+        ClientMetrics& metrics,
+        userver::engine::io::Sockaddr endpoint,
+        std::chrono::milliseconds timeout
+    );
 
     userver::utils::expected<std::size_t, ClientError> SendRawRequest(
         std::span<const std::byte> request_pdu,

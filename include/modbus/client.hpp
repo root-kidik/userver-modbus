@@ -8,6 +8,7 @@
 #include <userver/engine/io/sockaddr.hpp>
 #include <userver/utils/expected.hpp>
 
+#include <modbus/client_metrics.hpp>
 #include <modbus/coil.hpp>
 #include <modbus/discrete_input.hpp>
 
@@ -77,6 +78,7 @@ public:
 
 std::unique_ptr<Client> MakeUdpClient(
     std::uint8_t slave_id,
+    ClientMetrics& metrics,
     userver::engine::io::Sockaddr endpoint,
     std::chrono::milliseconds timeout
 );

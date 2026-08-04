@@ -4,8 +4,13 @@
 
 namespace modbus {
 
-UdpClient::UdpClient(std::uint8_t slave_id, userver::engine::io::Sockaddr endpoint, std::chrono::milliseconds timeout)
-    : ClientBase{slave_id},
+UdpClient::UdpClient(
+    std::uint8_t slave_id,
+    ClientMetrics& metrics,
+    userver::engine::io::Sockaddr endpoint,
+    std::chrono::milliseconds timeout
+)
+    : ClientBase{slave_id, metrics},
       socket_{endpoint.Domain(), userver::engine::io::SocketType::kDgram},
       endpoint_{endpoint},
       timeout_{timeout} {}
@@ -73,10 +78,11 @@ void UdpClient::DrainSocket() {
 
 std::unique_ptr<Client> MakeUdpClient(
     std::uint8_t slave_id,
+    ClientMetrics& metrics,
     userver::engine::io::Sockaddr endpoint,
     std::chrono::milliseconds timeout
 ) {
-    return std::make_unique<UdpClient>(slave_id, endpoint, timeout);
+    return std::make_unique<UdpClient>(slave_id, metrics, endpoint, timeout);
 }
 
 }  // namespace modbus

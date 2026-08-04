@@ -1,12 +1,16 @@
 #pragma once
 
+#include <cstdint>
+#include <span>
+
 #include <modbus/client.hpp>
+#include <modbus/client_metrics.hpp>
 
 namespace modbus {
 
 class ClientBase : public Client {
 public:
-    ClientBase(std::uint8_t slave_id);
+    ClientBase(std::uint8_t slave_id, ClientMetrics& metrics);
 
     [[nodiscard]] std::uint8_t GetSlaveId() const noexcept override;
 
@@ -48,7 +52,31 @@ public:
     ) override;
 
 private:
+    template <typename Request>
+    userver::utils::expected<std::size_t, ClientError> SendPdu(
+        const Request& request,
+        std::span<std::byte> response_pdu_buf
+    );
+
+    template <typename Request, typename Response, typename T>
+    userver::utils::expected<void, ClientError> ExecuteRead(
+        std::uint16_t address,
+        std::uint16_t quantity,
+        std::span<T> out_buffer
+    );
+
+    template <typename Request, typename Response, typename ValueT>
+    userver::utils::expected<void, ClientError> ExecuteWriteSingle(std::uint16_t address, ValueT value);
+
+    template <typename Request, typename Response, typename ElementT>
+    userver::utils::expected<void, ClientError> ExecuteWriteMultiple(
+        std::uint16_t address,
+        std::span<const ElementT> values
+    );
+
     std::uint8_t slave_id_;
+
+    ClientMetrics& metrics_;
 };
 
 }  // namespace modbus
