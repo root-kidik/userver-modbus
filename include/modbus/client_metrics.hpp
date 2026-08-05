@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <string_view>
 
+#include <userver/utils/statistics/metric_tag.hpp>
 #include <userver/utils/statistics/rate_counter.hpp>
 #include <userver/utils/statistics/writer.hpp>
 
@@ -64,6 +65,18 @@ struct ClientMetrics {
     std::array<MessageMetrics, static_cast<std::size_t>(MessageType::kMaxMessageType)> by_message_type{};
 };
 
+inline void DumpMetric(userver::utils::statistics::Writer& writer, const MessageMetrics& metrics) {
+    writer["total"] = metrics.total;
+    writer["success"] = metrics.success;
+    writer["errors"] = metrics.errors;
+}
+
+inline void ResetMetric(MessageMetrics& metrics) {
+    ResetMetric(metrics.total);
+    ResetMetric(metrics.success);
+    ResetMetric(metrics.errors);
+}
+
 inline void DumpMetric(userver::utils::statistics::Writer& writer, const ClientMetrics& metrics) {
     writer["bytes"]["sent"] = metrics.bytes_sent;
     writer["bytes"]["received"] = metrics.bytes_received;
@@ -74,14 +87,20 @@ inline void DumpMetric(userver::utils::statistics::Writer& writer, const ClientM
 
     auto by_type_writer = writer["by_type"];
 
-    for (std::size_t i = 0; i < static_cast<std::size_t>(MessageType::kMaxMessageType); i++) {
-        const auto& msg_metrics = metrics.by_message_type[i];
+    for (std::size_t i = 0; i < static_cast<std::size_t>(MessageType::kMaxMessageType); ++i) {
+        by_type_writer[ToString(static_cast<MessageType>(i))] = metrics.by_message_type[i];
+    }
+}
 
-        auto type_writer = by_type_writer[ToString(static_cast<MessageType>(i))];
+inline void ResetMetric(ClientMetrics& metrics) {
+    ResetMetric(metrics.bytes_sent);
+    ResetMetric(metrics.bytes_received);
+    ResetMetric(metrics.requests_total);
+    ResetMetric(metrics.requests_success);
+    ResetMetric(metrics.requests_errors);
 
-        type_writer["total"] = msg_metrics.total;
-        type_writer["success"] = msg_metrics.success;
-        type_writer["errors"] = msg_metrics.errors;
+    for (auto& item : metrics.by_message_type) {
+        ResetMetric(item);
     }
 }
 
