@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <string_view>
 
-#include <userver/utils/statistics/metric_tag.hpp>
 #include <userver/utils/statistics/rate_counter.hpp>
 #include <userver/utils/statistics/writer.hpp>
 
