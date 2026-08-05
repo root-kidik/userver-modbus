@@ -1,0 +1,65 @@
+components_manager:
+    components:
+        testsuite-support:
+
+        http-client:
+        http-client-core:
+            fs-task-processor: main-task-processor
+
+        tests-control:
+            method: POST
+            path: /tests/{action}
+            skip-unregistered-testpoints: true
+            task_processor: main-task-processor
+            testpoint-timeout: 10s
+            testpoint-url: $mockserver/testpoint
+            throttling_enabled: false
+
+        server:
+            listener:
+                port: $server-port
+                port#fallback: 8187
+                task_processor: main-task-processor
+            listener-monitor:
+                port: $monitor-server-port
+                port#fallback: 8086
+                connection:
+                    in_buffer_size: 32768
+                    requests_queue_size_threshold: 100
+                task_processor: main-task-processor
+
+        logging:
+            fs-task-processor: fs-task-processor
+            loggers:
+                default:
+                    file_path: '@stderr'
+                    level: debug
+                    overflow_behavior: discard
+
+        handler-server-monitor:
+            path: /service/monitor
+            method: GET
+            task_processor: main-task-processor
+
+        dns-client:
+            fs-task-processor: fs-task-processor
+
+        modbus-client-test:
+            transport: udp
+            slave_id: 1
+            host: "127.0.0.1"
+            port: 15020
+            timeout: 500ms
+
+        handler-modbus-test:
+            path: /v1/modbus/test
+            method: POST
+            task_processor: main-task-processor
+
+    task_processors:
+        main-task-processor:
+            worker_threads: 4
+        fs-task-processor:
+            worker_threads: 4
+
+    default_task_processor: main-task-processor

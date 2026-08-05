@@ -1,0 +1,4 @@
+server-port: 8187
+monitor-server-port: 8086
+
+mockserver: 'http://localhost:8088'
