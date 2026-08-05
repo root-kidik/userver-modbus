@@ -48,20 +48,20 @@ constexpr std::string_view ToString(MessageType type) noexcept {
 }
 
 struct MessageMetrics {
-    userver::utils::statistics::RateCounter total{};
-    userver::utils::statistics::RateCounter success{};
-    userver::utils::statistics::RateCounter errors{};
+    userver::utils::statistics::RateCounter total;
+    userver::utils::statistics::RateCounter success;
+    userver::utils::statistics::RateCounter errors;
 };
 
 struct ClientMetrics {
-    userver::utils::statistics::RateCounter bytes_sent{};
-    userver::utils::statistics::RateCounter bytes_received{};
+    userver::utils::statistics::RateCounter bytes_sent;
+    userver::utils::statistics::RateCounter bytes_received;
 
-    userver::utils::statistics::RateCounter requests_total{};
-    userver::utils::statistics::RateCounter requests_success{};
-    userver::utils::statistics::RateCounter requests_errors{};
+    userver::utils::statistics::RateCounter requests_total;
+    userver::utils::statistics::RateCounter requests_success;
+    userver::utils::statistics::RateCounter requests_errors;
 
-    std::array<MessageMetrics, static_cast<std::size_t>(MessageType::kMaxMessageType)> by_message_type{};
+    std::array<MessageMetrics, static_cast<std::size_t>(MessageType::kMaxMessageType)> by_message_type;
 };
 
 inline void DumpMetric(userver::utils::statistics::Writer& writer, const MessageMetrics& metrics) {
